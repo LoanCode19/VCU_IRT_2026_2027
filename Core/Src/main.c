@@ -25,6 +25,7 @@
 /* USER CODE BEGIN Includes */
 
 #include "stdio.h"
+#include "VCU.h"
 
 /* USER CODE END Includes */
 
@@ -167,7 +168,8 @@ int main(void)
 
   /* Start scheduler */
   // osKernelStart();
-  vTaskStartScheduler();
+  //vTaskStartScheduler();
+  MainApp();
 
   /* We should never get here as control is now taken by the scheduler */
 
