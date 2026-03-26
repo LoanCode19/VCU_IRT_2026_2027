@@ -1,5 +1,5 @@
 
-#ifdef LINUX
+#ifdef TEST_ISR
 #include "FreeRTOS.h"
 #include "TaskCanRX.h"
 #include <semphr.h>

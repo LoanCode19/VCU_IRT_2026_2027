@@ -19,7 +19,7 @@
 #include "TaskCanTx.h"
 #include "TaskRawValuesProcessing.h"
 
-#ifdef LINUX
+#ifdef TEST_ISR
 #include "CanISREmulator.h"
 #endif
 
@@ -70,7 +70,7 @@ void MainApp(void)
         2U,
         NULL);*/
 
-#ifdef LINUX
+#ifdef TEST_ISR
     xTaskCreate(
         CanISREmulator,
         "CanRxIsr",

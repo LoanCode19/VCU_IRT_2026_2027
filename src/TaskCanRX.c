@@ -38,7 +38,7 @@ void TaskCanRx(void *pvParameters)
     TickType_t lastWakeUp = xTaskGetTickCount();
 
 #ifdef LINUX
-    CAN_Replay_Init("./dataSets/can_messages.csv");
+    CAN_Replay_Init("./VCU_APP/dataSets/can_messages.csv");
 #endif
 
     CanRxParams_t *params = (CanRxParams_t *)pvParameters;
