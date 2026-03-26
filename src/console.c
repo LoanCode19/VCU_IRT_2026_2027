@@ -37,6 +37,7 @@
 SemaphoreHandle_t xStdioMutex;
 StaticSemaphore_t xStdioMutexBuffer;
 
+#ifdef LINUX
 void console_init(void)
 {
     xStdioMutex = xSemaphoreCreateMutexStatic(&xStdioMutexBuffer);
@@ -57,3 +58,13 @@ void console_print(const char *fmt,
 
     va_end(vargs);
 }
+#else
+void console_print(const char *fmt,
+                   ...)
+{
+    va_list vargs;
+    va_start(vargs, fmt);
+    vprintf(fmt, vargs);
+    va_end(vargs);
+}
+#endif
