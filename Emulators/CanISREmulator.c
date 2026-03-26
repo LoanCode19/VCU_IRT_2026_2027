@@ -13,7 +13,7 @@ void CanISREmulator(void *pvParameters)
     {
         console_print("------ISR driver CAN------\n");
         xSemaphoreGive(xCanRxSemaphore);
-        xTaskDelayUntil(&lastWakeUp, pdMS_TO_TICKS(150));
+        vTaskDelayUntil(&lastWakeUp, pdMS_TO_TICKS(150));
     }
 }
 
