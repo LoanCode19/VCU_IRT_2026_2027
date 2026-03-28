@@ -11,12 +11,6 @@
 #include <stdint.h>
 #include <semphr.h>
 
-#ifdef LINUX
-#include "CanRXDriverEmulator.h"
-#else
-#include "stm32f4xx_hal.h"
-#endif
-
 SemaphoreHandle_t xCanRxSemaphore;
 
 typedef enum canIds
@@ -37,11 +31,6 @@ typedef enum canIds
 
 void TaskCanRx(void *pvParameters)
 {
-
-#ifdef LINUX
-    CAN_Replay_Init("./VCU_APP/dataSets/can_messages.csv");
-#endif
-
     CanRxParams_t *params = (CanRxParams_t *)pvParameters;
     QueueHandle_t *xMainQueue = params->xMainQueue;
     QueueHandle_t *xTRVPQueue = params->xTRVPQueue;
@@ -52,12 +41,12 @@ void TaskCanRx(void *pvParameters)
     while (1)
     {
 
-        console_print("------(B)CanRx------\n");
         dataMessage_t appMsg = {0, 0};
         dataCan canMsg = {0};
         // get_CAN_Rx_Message(&canMsg);
 
-        xQueuePeek(*xCanRxQueue, &canMsg, pdMS_TO_TICKS(500));
+        xQueuePeek(*xCanRxQueue, &canMsg, portMAX_DELAY);
+        console_print("------(B)CanRx------\n");
 
         // Envoyer à la queue appropriée selon l'ID avec switch
         while ((xQueueReceive(*xCanRxQueue, &canMsg, pdMS_TO_TICKS(0))) == pdPASS)
@@ -116,23 +105,3 @@ void TaskCanRx(void *pvParameters)
         console_print("------(E)CanRx------\n\n");
     }
 }
-
-/*#ifdef LINUX
-#else
-void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
-{
-    console_print("CAN RX FIFO 0 message pending callback triggered\n");
-    BaseType_t xHigherPriorityTaskWoken = pdTRUE;
-    xSemaphoreGiveFromISR(xCanRxSemaphore, NULL);
-    portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
-}
-#endif
-
-void get_CAN_Rx_Message(dataCan *appMsg)
-{
-#ifdef LINUX
-    CAN_ReadNext(appMsg);
-#else
-    GetNextCANMessage(appMsg, 0, 0);
-#endif
-}*/
