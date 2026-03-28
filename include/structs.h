@@ -45,6 +45,12 @@ typedef struct
 
 typedef struct
 {
+    uint8_t id;
+    uint32_t data;
+} dataCan;
+
+typedef struct
+{
     dataMessage_t ThrottleCommand; // calculated throttle command to be sent to the inverter
     dataMessage_t speed;           // calculated speed
 
