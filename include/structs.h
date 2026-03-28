@@ -117,6 +117,7 @@ typedef struct
 {
     QueueHandle_t *xMainQueue;
     QueueHandle_t *xTRVPQueue;
+    QueueHandle_t *xCanRxQueue;
 } CanRxParams_t;
 
 typedef struct

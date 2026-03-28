@@ -13,6 +13,8 @@
 
 #ifdef LINUX
 #include "CanRXDriverEmulator.h"
+#else
+#include "stm32f4xx_hal.h"
 #endif
 
 SemaphoreHandle_t xCanRxSemaphore;
@@ -35,7 +37,6 @@ typedef enum canIds
 
 void TaskCanRx(void *pvParameters)
 {
-    TickType_t lastWakeUp = xTaskGetTickCount();
 
 #ifdef LINUX
     CAN_Replay_Init("./VCU_APP/dataSets/can_messages.csv");
@@ -44,80 +45,94 @@ void TaskCanRx(void *pvParameters)
     CanRxParams_t *params = (CanRxParams_t *)pvParameters;
     QueueHandle_t *xMainQueue = params->xMainQueue;
     QueueHandle_t *xTRVPQueue = params->xTRVPQueue;
+    QueueHandle_t *xCanRxQueue = params->xCanRxQueue;
 
-    xCanRxSemaphore = xSemaphoreCreateBinary();
+    TickType_t timeNow = xTaskGetTickCount();
 
     while (1)
     {
-        xSemaphoreTake(xCanRxSemaphore, portMAX_DELAY);
 
         console_print("------(B)CanRx------\n");
-        dataMessage_t msg = {0, 0};
-
+        dataMessage_t appMsg = {0, 0};
         dataCan canMsg = {0};
-        get_CAN_Rx_Message(&canMsg);
+        // get_CAN_Rx_Message(&canMsg);
 
-        msg.data = canMsg.data;
+        xQueuePeek(*xCanRxQueue, &canMsg, pdMS_TO_TICKS(500));
 
         // Envoyer à la queue appropriée selon l'ID avec switch
-        switch ((CanIds)canMsg.id)
+        while ((xQueueReceive(*xCanRxQueue, &canMsg, pdMS_TO_TICKS(0))) == pdPASS)
         {
-        // Wheel speeds went to Main Task
-        case CAN_wheelFRId:
-            msg.id = wheelFRId;
-            xQueueSend(*xTRVPQueue, &msg, pdMS_TO_TICKS(5));
-            break;
-        case CAN_wheelFLId:
-            msg.id = wheelFLId;
-            xQueueSend(*xTRVPQueue, &msg, pdMS_TO_TICKS(5));
-            break;
-        case CAN_wheelRRId:
-            msg.id = wheelRRId;
-            xQueueSend(*xTRVPQueue, &msg, pdMS_TO_TICKS(5));
-            break;
-        case CAN_wheelRLId:
-            msg.id = wheelRLId;
-            xQueueSend(*xTRVPQueue, &msg, pdMS_TO_TICKS(5));
-            break;
+            appMsg.data = canMsg.data;
 
-        case CAN_apps1Id:
-            msg.id = apps1Id;
-            xQueueSend(*xTRVPQueue, &msg, pdMS_TO_TICKS(5));
-            break;
-        case CAN_apps2Id:
-            msg.id = apps2Id;
-            xQueueSend(*xTRVPQueue, &msg, pdMS_TO_TICKS(5));
-            break;
+            switch ((CanIds)canMsg.id)
+            {
+            // Wheel speeds went to Main Task
+            case CAN_wheelFRId:
+                appMsg.id = wheelFRId;
+                xQueueSend(*xTRVPQueue, &appMsg, pdMS_TO_TICKS(5));
+                break;
+            case CAN_wheelFLId:
+                appMsg.id = wheelFLId;
+                xQueueSend(*xTRVPQueue, &appMsg, pdMS_TO_TICKS(5));
+                break;
+            case CAN_wheelRRId:
+                appMsg.id = wheelRRId;
+                xQueueSend(*xTRVPQueue, &appMsg, pdMS_TO_TICKS(5));
+                break;
+            case CAN_wheelRLId:
+                appMsg.id = wheelRLId;
+                xQueueSend(*xTRVPQueue, &appMsg, pdMS_TO_TICKS(5));
+                break;
 
-        case CAN_motor_tempId:
-            msg.id = motor_tempId;
-            xQueueSend(*xMainQueue, &msg, pdMS_TO_TICKS(5));
-            break;
-        case CAN_inverter_tempId:
-            msg.id = inverter_tempId;
-            xQueueSend(*xMainQueue, &msg, pdMS_TO_TICKS(5));
-            break;
-        case CAN_voltageId:
-            msg.id = voltageId;
-            xQueueSend(*xMainQueue, &msg, pdMS_TO_TICKS(5));
-            break;
-        default:
-            break;
+            case CAN_apps1Id:
+                appMsg.id = apps1Id;
+                xQueueSend(*xTRVPQueue, &appMsg, pdMS_TO_TICKS(5));
+                break;
+            case CAN_apps2Id:
+                appMsg.id = apps2Id;
+                xQueueSend(*xTRVPQueue, &appMsg, pdMS_TO_TICKS(5));
+                break;
+
+            case CAN_motor_tempId:
+                appMsg.id = motor_tempId;
+                xQueueSend(*xMainQueue, &appMsg, pdMS_TO_TICKS(5));
+                break;
+            case CAN_inverter_tempId:
+                appMsg.id = inverter_tempId;
+                xQueueSend(*xMainQueue, &appMsg, pdMS_TO_TICKS(5));
+                break;
+            case CAN_voltageId:
+                appMsg.id = voltageId;
+                xQueueSend(*xMainQueue, &appMsg, pdMS_TO_TICKS(5));
+                break;
+            default:
+                break;
+            }
+            console_print("sent appMsg id:%d data:%d\n", appMsg.id, appMsg.data);
         }
-        console_print("sent msg id:%d data:%d\n", msg.id, msg.data);
 
         // console_print((ledState = !ledState) ? "Led ON\n" : "Led OFF\n");
-        msg.timestamp = xTaskGetTickCount();
+        appMsg.timestamp = xTaskGetTickCount();
         console_print("------(E)CanRx------\n\n");
     }
 }
 
-void get_CAN_Rx_Message(dataCan *msg)
+/*#ifdef LINUX
+#else
+void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
+{
+    console_print("CAN RX FIFO 0 message pending callback triggered\n");
+    BaseType_t xHigherPriorityTaskWoken = pdTRUE;
+    xSemaphoreGiveFromISR(xCanRxSemaphore, NULL);
+    portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
+}
+#endif
+
+void get_CAN_Rx_Message(dataCan *appMsg)
 {
 #ifdef LINUX
-    CAN_ReadNext(msg);
+    CAN_ReadNext(appMsg);
 #else
-    msg->data = 128;
-    msg->id = 12;
+    GetNextCANMessage(appMsg, 0, 0);
 #endif
-}
+}*/

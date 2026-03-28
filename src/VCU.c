@@ -6,6 +6,7 @@
 #include "FreeRTOS.h"
 #include "task.h"
 #include "queue.h"
+#include "queueHandles.h"
 
 #include "structs.h"
 
@@ -26,16 +27,17 @@
 void MainApp(void)
 {
 
-    QueueHandle_t xMainQueue = xQueueCreate(10, sizeof(dataMessage_t));
-    QueueHandle_t xTRVPQueue = xQueueCreate(10, sizeof(dataMessage_t));
-    QueueHandle_t xIHMQueue = xQueueCreate(10, sizeof(IHMOrder_t));
-    QueueHandle_t xCanTxQueue = xQueueCreate(10, sizeof(dataMessage_t));
+    xMainQueue = xQueueCreate(10, sizeof(dataMessage_t));
+    xTRVPQueue = xQueueCreate(10, sizeof(dataMessage_t));
+    xIHMQueue = xQueueCreate(10, sizeof(IHMOrder_t));
+    xCanTxQueue = xQueueCreate(10, sizeof(dataMessage_t));
+    xCanRxQueue = xQueueCreate(10, sizeof(dataCan));
 
     initThrottleValues();
     // GetUserThrottleCommand();
 
     MainParams_t mainTaskParam = {&xMainQueue, &xTRVPQueue, &xIHMQueue, &xCanTxQueue};
-    CanRxParams_t canRxParams = {&xMainQueue, &xTRVPQueue};
+    CanRxParams_t canRxParams = {&xMainQueue, &xTRVPQueue, &xCanRxQueue};
     CanTxParam_t canTxParams = {&xCanTxQueue};
     TRVPParams_t TRVPParams = {&xTRVPQueue, &xMainQueue};
     xTaskCreate(
