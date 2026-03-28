@@ -1,7 +1,7 @@
 
 #ifdef TEST_ISR
 #include "FreeRTOS.h"
-#include "TaskCanRX.h"
+#include "structs.h"
 #include "queueHandles.h"
 #include <semphr.h>
 
