@@ -25,8 +25,9 @@
 /* USER CODE BEGIN Includes */
 
 #include "stdio.h"
-#include "TaskCanRX.h"
 #include "VCU.h"
+#include "structs.h"
+#include "queueHandles.h"
 
 /* USER CODE END Includes */
 
@@ -90,15 +91,17 @@ void TaskSendTXMessages(void *pvParameters)
 {
   TxData[0] = 0x3;
   TxData[1] = 0xAD;
-
-  /* Start the Transmission process */
-  if (HAL_CAN_AddTxMessage(&hcan1, &TxHeader, TxData, &TxMailbox) != HAL_OK)
+  while (1)
   {
-    /* Transmission request Error */
-    Error_Handler();
+    /* Start the Transmission process */
+    if (HAL_CAN_AddTxMessage(&hcan1, &TxHeader, TxData, &TxMailbox) != HAL_OK)
+    {
+      /* Transmission request Error */
+      Error_Handler();
+    }
+    printf("Message sent\n");
+    vTaskDelay(500);
   }
-  printf("Message sent\n");
-  vTaskDelay(500);
 }
 
 /* USER CODE END 0 */
@@ -177,7 +180,7 @@ int main(void)
       "CAN_TX",
       configMINIMAL_STACK_SIZE,
       NULL,
-      1U,
+      2U,
       NULL);
 
   MainApp();
@@ -535,17 +538,21 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
-void GetNextCANMessage(dataCan *msg, int can, int fifo)
+void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
 {
-  CAN_RxHeaderTypeDef RxHeader;
-  uint8_t RxData[8];
-  if (HAL_CAN_GetRxMessage(&hcan1, CAN_RX_FIFO0, &RxHeader, RxData) != HAL_OK)
+  // console_print("CAN RX FIFO 0 message pending callback triggered\n");
+  if (HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO0, &RxHeader, RxData) != HAL_OK)
   {
     /* Reception Error */
     Error_Handler();
   }
-  msg->id = RxHeader.StdId;
-  msg->data = (RxData[0] << 24) | (RxData[1] << 16) | (RxData[2] << 8) | RxData[3];
+  dataCan canMsg = {0};
+  canMsg.id = RxHeader.StdId;
+  canMsg.data = (RxData[0] << 24) | (RxData[1] << 16) | (RxData[2] << 8) | RxData[3];
+  if (xQueueSendFromISR(xCanRxQueue, &canMsg, NULL) != pdPASS)
+  {
+    // console_print("Failed to send CAN message to queue\n");
+  }
 }
 
 int _write(int file, char *ptr, int len)
