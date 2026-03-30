@@ -5,13 +5,24 @@
 
 #ifndef STRUCTS_H
 #define STRUCTS_H
-
+// enums
 typedef enum
 {
     STATUS_TIME_OK = 0,
     STATUS_TIMEOUT,
     STATUS_NOT_READY,
 } DataTimeStatus_t;
+
+typedef enum TasksIds
+{
+    TaskTRVPId = 0,
+    TaskIHMId = 1,
+    TaskCanRxId = 2,
+    TaskCanTxId = 3,
+    TaskMainId = 4,
+
+} TasksIds;
+// enums
 
 typedef enum messageIds
 {
@@ -33,6 +44,13 @@ typedef enum messageIds
     throttleCmdId
 
 } MessageIds;
+
+typedef struct
+{
+    TasksIds taskId;
+    TickType_t timestamp;
+
+} WdgMessage_t;
 
 typedef struct
 {
@@ -136,4 +154,10 @@ typedef struct
     QueueHandle_t *xTRVPQueue;
     QueueHandle_t *xMainQueue;
 } TRVPParams_t;
+
+typedef struct
+{
+    QueueHandle_t *xWDGQueue;
+
+} TWdgParams_t;
 #endif // STRUCTS_H

@@ -4,6 +4,7 @@
 #include "queue.h"
 
 #include "structs.h"
+#include "project_config.h"
 
 #include "console.h"
 #include "TaskRawValuesProcessing.h"
@@ -45,7 +46,7 @@ void TaskRawValuesProcessing(void *pvParameters)
     {
         TickType_t timeNow = xTaskGetTickCount();
         dataMessage_t msg = {0};
-        xQueuePeek(*xTRVPQueue, &msg, pdMS_TO_TICKS(500));
+        xQueuePeek(*xTRVPQueue, &msg, TRVP_TIMEOUT);
 
         console_print("------(B)TRVP------\n");
 

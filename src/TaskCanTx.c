@@ -3,6 +3,7 @@
 #include "queue.h"
 
 #include "structs.h"
+#include "project_config.h"
 
 #include "console.h"
 #include "TaskCanTx.h"
@@ -24,7 +25,7 @@ void TaskCanTx(void *pvParameters)
         msg.timestamp = xTaskGetTickCount();
 
         dataMessage_t msg = {0};
-        BaseType_t xReturn = xQueueReceive(*xCanTxQueue, &msg, portMAX_DELAY);
+        BaseType_t xReturn = xQueueReceive(*xCanTxQueue, &msg, CAN_TX_TIMEOUT);
         console_print("(B)------CanTX------\n");
         if (xReturn == pdPASS)
         {

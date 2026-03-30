@@ -2,6 +2,7 @@
 #include "queue.h"
 
 #include "structs.h"
+#include "project_config.h"
 
 #include "console.h"
 #include "TaskCanRX.h"
@@ -45,7 +46,7 @@ void TaskCanRx(void *pvParameters)
         dataCan canMsg = {0};
         // get_CAN_Rx_Message(&canMsg);
 
-        xQueuePeek(*xCanRxQueue, &canMsg, portMAX_DELAY);
+        xQueuePeek(*xCanRxQueue, &canMsg, CAN_RX_TIMEOUT);
         console_print("------(B)CanRx------\n");
 
         // Envoyer à la queue appropriée selon l'ID avec switch

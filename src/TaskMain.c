@@ -4,6 +4,7 @@
 #include "queue.h"
 
 #include "structs.h"
+#include "project_config.h"
 
 #include "console.h"
 #include "TaskMain.h"
@@ -36,7 +37,7 @@ void TaskMain(void *pvParameters)
     {
         // console_print((ledState = !ledState) ? "Led2 ON\n" : "Led2 OFF\n");
         dataMessage_t msg = {0};
-        xQueuePeek(*xMainQueue, &msg, pdMS_TO_TICKS(500));
+        xQueuePeek(*xMainQueue, &msg, TRVP_TIMEOUT);
 
         console_print("------(B)MainState------\n");
 
