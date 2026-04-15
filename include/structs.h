@@ -106,6 +106,14 @@ typedef struct
 
 } IHMOrder_t;
 
+typedef struct
+{
+    Order_t order;
+    bool state;
+    uint8_t levelPercent;
+
+} DigitalOrder_t;
+
 //
 //
 //

@@ -32,6 +32,7 @@ void MainApp(void)
     xIHMQueue = xQueueCreate(10, sizeof(IHMOrder_t));
     xCanTxQueue = xQueueCreate(10, sizeof(dataMessage_t));
     xCanRxQueue = xQueueCreate(10, sizeof(dataCan));
+    xDSQueue = xQueueCreate(10, sizeof(DigitalOrder_t));
 
     initThrottleValues();
     // GetUserThrottleCommand();
