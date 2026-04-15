@@ -34,6 +34,10 @@ void TaskRawValuesProcessing(void *pvParameters)
     TRVPParams_t *params = (TRVPParams_t *)pvParameters;
     QueueHandle_t *xTRVPQueue = params->xTRVPQueue;
     QueueHandle_t *xMainQueue = params->xMainQueue;
+    QueueHandle_t *xWDGQueue = params->xWDGQueue;
+    TaskId taskId = params->taskId;
+
+    wdgFeed(taskId, xTaskGetTickCount(), &xWDGQueue);
 
     trvpState.wheelSpeeds[WHEELFR_IDX].timeStatus = STATUS_NOT_READY;
     trvpState.wheelSpeeds[WHEELFL_IDX].timeStatus = STATUS_NOT_READY;
@@ -105,6 +109,12 @@ void TaskRawValuesProcessing(void *pvParameters)
         trvpState.lastCallTimeStmp = xTaskGetTickCount();
 
         printTRVPState(&trvpState);
+
+#ifdef USE_WDG
+        // feed WDG
+        wdgFeed(taskId, xTaskGetTickCount(), xWDGQueue);
+#endif
+
         console_print("------(E)TRVP------\n\n");
     }
 }

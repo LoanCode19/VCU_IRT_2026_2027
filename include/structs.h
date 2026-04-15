@@ -2,6 +2,7 @@
 #include <stdbool.h>
 #include "FreeRTOS.h"
 #include "queue.h"
+#include "project_config.h"
 
 #ifndef STRUCTS_H
 #define STRUCTS_H
@@ -13,15 +14,16 @@ typedef enum
     STATUS_NOT_READY,
 } DataTimeStatus_t;
 
+// MUST BEGIN AT ZERO
 typedef enum TasksIds
 {
-    TaskTRVPId = 0,
-    TaskIHMId = 1,
-    TaskCanRxId = 2,
-    TaskCanTxId = 3,
-    TaskMainId = 4,
+    TaskCanRxId,
+    TaskTRVPId,
+    TaskIHMId,
+    TaskCanTxId,
+    TaskMainId,
 
-} TasksIds;
+} TaskId; // MUST BEGIN AT ZERO
 // enums
 
 typedef enum messageIds
@@ -47,10 +49,11 @@ typedef enum messageIds
 
 typedef struct
 {
-    TasksIds taskId;
+    TaskId taskId;
     TickType_t timestamp;
-
 } WdgMessage_t;
+
+typedef TickType_t WDGTimoutTable[MAX_TASKS];
 
 typedef struct
 {
@@ -135,6 +138,8 @@ typedef struct
     QueueHandle_t *xTRVPQueue;
     QueueHandle_t *xIHMQueue;
     QueueHandle_t *xCanTxQueue;
+    QueueHandle_t *xWDGQueue;
+    TaskId taskId;
 } MainParams_t;
 
 typedef struct
@@ -142,22 +147,33 @@ typedef struct
     QueueHandle_t *xMainQueue;
     QueueHandle_t *xTRVPQueue;
     QueueHandle_t *xCanRxQueue;
+    QueueHandle_t *xWDGQueue;
+    TaskId taskId;
+
 } CanRxParams_t;
 
 typedef struct
 {
     QueueHandle_t *xCanTxQueue;
+    QueueHandle_t *xWDGQueue;
+
+    TaskId taskId;
+
 } CanTxParam_t;
 
 typedef struct
 {
     QueueHandle_t *xTRVPQueue;
     QueueHandle_t *xMainQueue;
+    QueueHandle_t *xWDGQueue;
+    TaskId taskId;
+
 } TRVPParams_t;
 
 typedef struct
 {
     QueueHandle_t *xWDGQueue;
+    TaskId taskId;
 
-} TWdgParams_t;
+} WdgParams_t;
 #endif // STRUCTS_H

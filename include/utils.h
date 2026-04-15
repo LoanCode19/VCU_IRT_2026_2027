@@ -7,6 +7,8 @@ float ProcessThrottle(float finalSpnt, int speed, int motorTemp, int inverterTem
 void updateDataTimeStatus(dataMessage_t *dataMsg, int count, int maxDiff, TickType_t now);
 void sort4(int32_t v[4], uint8_t n);
 int calculateSpeed(dataMessage_t wheelSpeeds[4], int wheelCount);
+void wdgFeed(TaskId taskId, TickType_t timestamp, QueueHandle_t *xWDGQueue);
+void wdgRegister(TaskId taskId, TickType_t timeout, WDGTimoutTable wdgTimeoutTable);
 //  float checkMessageTimeStamps(const MotorControlState_t *motorState, GlobalState_t *globalState, TickType_t time_now);
 
 inline static int32_t change(int32_t x, int32_t in_min, int32_t in_max, int32_t out_min, int32_t out_max)

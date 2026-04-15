@@ -7,5 +7,6 @@ extern QueueHandle_t xTRVPQueue;
 extern QueueHandle_t xIHMQueue;
 extern QueueHandle_t xCanTxQueue;
 extern QueueHandle_t xCanRxQueue;
+extern QueueHandle_t xWDGQueue;
 
 #endif // QUEUE_HANDLES_H

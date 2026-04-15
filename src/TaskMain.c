@@ -26,6 +26,8 @@ void TaskMain(void *pvParameters)
     QueueHandle_t *xTRVPQueu = params->xTRVPQueue;
     QueueHandle_t *xIHMQueue = params->xIHMQueue;
     QueueHandle_t *xCanTxQueue = params->xCanTxQueue;
+    QueueHandle_t *xWDGQueue = params->xWDGQueue;
+    TaskId taskId = params->taskId;
 
     mainState.inverterTemp.timeStatus = STATUS_NOT_READY;
     mainState.motorTemp.timeStatus = STATUS_NOT_READY;
@@ -80,6 +82,11 @@ void TaskMain(void *pvParameters)
         }
 
         PrintMainState(&mainState);
+
+#ifdef USE_WDG
+        // feed WDG
+        wdgFeed(taskId, xTaskGetTickCount(), xWDGQueue);
+#endif
 
         console_print("------(E)MainState------\n\n");
     }

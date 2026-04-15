@@ -248,55 +248,18 @@ void sort4(int32_t v[4], uint8_t n)
     }
 }
 
-/*float checkMessageTimeStamps(const MotorControlState_t *motorState, GlobalState_t *globalState, TickType_t time_now)
+void wdgRegister(TaskId taskId, TickType_t timeout, WDGTimoutTable wdgTimeoutTable)
 {
-    // on ne retourne pas tout de suite pour que si on change les limites, on ne soit pas obliger de changer le code.(on pourrait retourner dans)
-    // l'ordre croissant des limites, mais si on changes->il faut changer la structure du code)
+    if (taskId < MAX_TASKS)
+    {
+        wdgTimeoutTable[taskId] = timeout;
+    }
+}
 
-    /////////// APPS /////////////////
-    int limit = 100;
-    if (time_now - motorState->appsValues[0].timestamp > MAX_APPS_TIMEOUT && time_now - motorState->appsValues[1].timestamp > MAX_APPS_TIMEOUT)
-    {
-        limit = MIN(limit, 0);
-    }
-    else if (time_now - motorState->appsValues[0].timestamp > MAX_APPS_TIMEOUT)
-    {
-        limit = MIN(limit, 50);
-        globalState->derateReason |= DERATE_APPS1_OUTDATED;
-    }
-    else if (time_now - motorState->appsValues[1].timestamp > MAX_APPS_TIMEOUT)
-    {
-        limit = MIN(limit, 50);
-        globalState->derateReason |= DERATE_APPS2_OUTDATED;
-    }
-
-    /////////// WheelSpeed /////////////////
-    int nbOutdatedWheelValues = 0;
-    for (int i = 0; i < 4; ++i)
-    {
-        if (time_now - motorState->wheelSpeeds[i].timestamp > MAX_WHEEL_TIMEOUT)
-        {
-            globalState->derateReason |= DERATE_WHEEL_OUTDATED(i);
-            nbOutdatedWheelValues++;
-        }
-    }
-    if (nbOutdatedWheelValues == 4)
-    {
-        limit = MIN(limit, 0);
-    }
-    else if (nbOutdatedWheelValues == 3)
-    {
-        limit = MIN(limit, 40);
-    }
-    else if (nbOutdatedWheelValues >= 1)
-    {
-        limit = MIN(limit, 50);
-    }
-
-    /////////// Breakpedal /////////////////
-    if (time_now - motorState->lastCheckedBreakPedal > MAX_BREAK_TIMEOUT)
-    {
-        limit = MIN(limit, 0);
-        globalState->derateReason |= DERATE_BREAK_OUTDATED;
-    }
-}*/
+void wdgFeed(TaskId taskId, TickType_t timestamp, QueueHandle_t *xWDGQueue)
+{
+    WdgMessage_t wdgMsg;
+    wdgMsg.taskId = taskId;
+    wdgMsg.timestamp = timestamp;
+    xQueueSend(*xWDGQueue, &wdgMsg, pdMS_TO_TICKS(5));
+}

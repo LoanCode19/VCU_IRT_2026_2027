@@ -2,6 +2,7 @@
 #include "queue.h"
 
 #include "structs.h"
+#include "utils.h"
 #include "project_config.h"
 
 #include "console.h"
@@ -36,6 +37,8 @@ void TaskCanRx(void *pvParameters)
     QueueHandle_t *xMainQueue = params->xMainQueue;
     QueueHandle_t *xTRVPQueue = params->xTRVPQueue;
     QueueHandle_t *xCanRxQueue = params->xCanRxQueue;
+    QueueHandle_t *xWDGQueue = params->xWDGQueue;
+    TaskId taskId = params->taskId;
 
     TickType_t timeNow = xTaskGetTickCount();
 
@@ -44,7 +47,6 @@ void TaskCanRx(void *pvParameters)
 
         dataMessage_t appMsg = {0, 0};
         dataCan canMsg = {0};
-        // get_CAN_Rx_Message(&canMsg);
 
         xQueuePeek(*xCanRxQueue, &canMsg, CAN_RX_TIMEOUT);
         console_print("------(B)CanRx------\n");
@@ -103,6 +105,12 @@ void TaskCanRx(void *pvParameters)
 
         // console_print((ledState = !ledState) ? "Led ON\n" : "Led OFF\n");
         appMsg.timestamp = xTaskGetTickCount();
+
+#ifdef USE_WDG
+        // feed WDG
+        wdgFeed(taskId, xTaskGetTickCount(), xWDGQueue);
+#endif
+
         console_print("------(E)CanRx------\n\n");
     }
 }
