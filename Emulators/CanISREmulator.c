@@ -3,6 +3,9 @@
 #include "FreeRTOS.h"
 #include "structs.h"
 #include "queueHandles.h"
+#include "console.h"
+#include "CanRXDriverEmulator.h"
+
 // #include "Can"
 #include <semphr.h>
 

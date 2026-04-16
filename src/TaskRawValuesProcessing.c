@@ -37,8 +37,6 @@ void TaskRawValuesProcessing(void *pvParameters)
     QueueHandle_t *xWDGQueue = params->xWDGQueue;
     TaskId taskId = params->taskId;
 
-    wdgFeed(taskId, xTaskGetTickCount(), &xWDGQueue);
-
     trvpState.wheelSpeeds[WHEELFR_IDX].timeStatus = STATUS_NOT_READY;
     trvpState.wheelSpeeds[WHEELFL_IDX].timeStatus = STATUS_NOT_READY;
     trvpState.wheelSpeeds[WHEELRR_IDX].timeStatus = STATUS_NOT_READY;

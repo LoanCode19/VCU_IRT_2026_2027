@@ -4,6 +4,7 @@
 
 #include "structs.h"
 #include "project_config.h"
+#include "utils.h"
 
 #include "console.h"
 #include "TaskCanTx.h"
