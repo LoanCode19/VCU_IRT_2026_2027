@@ -53,8 +53,6 @@ typedef struct
     TickType_t timestamp;
 } WdgMessage_t;
 
-typedef TickType_t WDGTimoutTable[MAX_TASKS];
-
 typedef struct
 {
     MessageIds id;
@@ -70,47 +68,7 @@ typedef struct
     uint32_t data;
 } dataCan;
 
-typedef struct
-{
-    dataMessage_t ThrottleCommand; // calculated throttle command to be sent to the inverter
-    dataMessage_t speed;           // calculated speed
-
-    dataMessage_t motorTemp;
-    dataMessage_t inverterTemp;
-    dataMessage_t Voltage;
-
-    bool brakePedalPressed; // true if brake pedal is pressed, false otherwise
-    TickType_t lastCheckedBreakPedal;
-
-    TickType_t lastCallTimeStmp;
-
-    bool direction; // true for forward, false for reverse
-
-} MainState_t;
-
-typedef struct
-{
-    // int32_t ThrottleCommand; // calculated throttle command to be sent to the inverter
-    uint32_t speed; // calculated speed
-
-    dataMessage_t wheelSpeeds[4];
-    dataMessage_t appsValues[2];
-
-    bool brakePedalPressed; // true if brake pedal is pressed, false otherwise
-    TickType_t lastCheckedBreakPedal;
-
-    TickType_t lastCallTimeStmp;
-
-} TRVPState_t;
-
-typedef enum Order
-{
-    FaultLight = 0,
-    CoolingPump = 1,
-    CoolingFans = 2,
-    R2Dbuzzer = 3,
-
-} Order_t;
+typedef TickType_t WDGTimoutTable[MAX_TASKS];
 
 typedef enum speedStatus
 {
@@ -120,60 +78,4 @@ typedef enum speedStatus
 
 } SpeedStatus;
 
-typedef struct
-{
-    Order_t order;
-    bool state;
-
-} IHMOrder_t;
-
-//
-//
-//
-//
-// Tasks parameters
-typedef struct
-{
-    QueueHandle_t *xMainQueue;
-    QueueHandle_t *xTRVPQueue;
-    QueueHandle_t *xIHMQueue;
-    QueueHandle_t *xCanTxQueue;
-    QueueHandle_t *xWDGQueue;
-    TaskId taskId;
-} MainParams_t;
-
-typedef struct
-{
-    QueueHandle_t *xMainQueue;
-    QueueHandle_t *xTRVPQueue;
-    QueueHandle_t *xCanRxQueue;
-    QueueHandle_t *xWDGQueue;
-    TaskId taskId;
-
-} CanRxParams_t;
-
-typedef struct
-{
-    QueueHandle_t *xCanTxQueue;
-    QueueHandle_t *xWDGQueue;
-
-    TaskId taskId;
-
-} CanTxParam_t;
-
-typedef struct
-{
-    QueueHandle_t *xTRVPQueue;
-    QueueHandle_t *xMainQueue;
-    QueueHandle_t *xWDGQueue;
-    TaskId taskId;
-
-} TRVPParams_t;
-
-typedef struct
-{
-    QueueHandle_t *xWDGQueue;
-    TaskId taskId;
-
-} WdgParams_t;
 #endif // STRUCTS_H

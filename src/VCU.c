@@ -30,7 +30,7 @@ void MainApp(void)
 
     xMainQueue = xQueueCreate(10, sizeof(dataMessage_t));
     xTRVPQueue = xQueueCreate(10, sizeof(dataMessage_t));
-    xIHMQueue = xQueueCreate(10, sizeof(IHMOrder_t));
+    xIHMQueue = xQueueCreate(10, sizeof(dataMessage_t));
     xCanTxQueue = xQueueCreate(10, sizeof(dataMessage_t));
     xCanRxQueue = xQueueCreate(10, sizeof(dataCan));
     xWDGQueue = xQueueCreate(10, sizeof(WdgMessage_t));

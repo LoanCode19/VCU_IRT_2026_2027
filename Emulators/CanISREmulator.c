@@ -21,7 +21,7 @@ void CanISREmulator(void *pvParameters)
         CAN_ReadNext(&canMsg);
         console_print("------ISR driver CAN------\n");
         xQueueSend(xCanRxQueue, &canMsg, portMAX_DELAY);
-        vTaskDelayUntil(&lastWakeUp, pdMS_TO_TICKS(500));
+        vTaskDelayUntil(&lastWakeUp, pdMS_TO_TICKS(400));
     }
 }
 
