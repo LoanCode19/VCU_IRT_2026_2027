@@ -22,7 +22,6 @@ void TaskDigitalSignals(void *pvParameters)
             // Queue is consumed for now, digital output handling will be added later.
             (void)orderMsg.order;
             (void)orderMsg.state;
-            (void)orderMsg.levelPercent;
         }
     }
 }
