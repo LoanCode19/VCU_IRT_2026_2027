@@ -78,4 +78,20 @@ typedef enum speedStatus
 
 } SpeedStatus;
 
+typedef enum Order
+{
+    FaultLight = 0,
+    CoolingPump = 1,
+    CoolingFans = 2,
+    R2Dbuzzer = 3,
+
+} Order_t;
+
+typedef struct
+{
+    Order_t order;
+    bool state;
+
+} IHMOrder_t;
+
 #endif // STRUCTS_H
