@@ -14,6 +14,7 @@
 
 #include "TaskCanRX.h"
 #include "TaskMain.h"
+#include "TaskIHM.h"
 #include "VCU.h"
 #include "throttle.h"
 #include "utils.h"
@@ -30,10 +31,11 @@ void MainApp(void)
 
     xMainQueue = xQueueCreate(10, sizeof(dataMessage_t));
     xTRVPQueue = xQueueCreate(10, sizeof(dataMessage_t));
-    xIHMQueue = xQueueCreate(10, sizeof(dataMessage_t));
+    xIHMQueue = xQueueCreate(10, sizeof(IHMOrder_t));
     xCanTxQueue = xQueueCreate(10, sizeof(dataMessage_t));
     xCanRxQueue = xQueueCreate(10, sizeof(dataCan));
     xWDGQueue = xQueueCreate(10, sizeof(WdgMessage_t));
+    xDSQueue = xQueueCreate(10, sizeof(dataMessage_t));
 
     initThrottleValues();
     // GetUserThrottleCommand();
@@ -42,6 +44,7 @@ void MainApp(void)
     CanRxParams_t canRxParams = {&xMainQueue, &xTRVPQueue, &xCanRxQueue, &xWDGQueue, TaskCanRxId};
     CanTxParam_t canTxParams = {&xCanTxQueue, &xWDGQueue, TaskCanTxId};
     TRVPParams_t TRVPParams = {&xTRVPQueue, &xMainQueue, &xWDGQueue, TaskTRVPId};
+    TaskIHMParam_t ihmParams = {&xIHMQueue, &xDSQueue, &xWDGQueue, TaskIHMId};
 #ifdef USE_WDG
     WdgParams_t wdgParams = {&xWDGQueue};
 #endif
@@ -75,6 +78,14 @@ void MainApp(void)
         configMINIMAL_STACK_SIZE,
         &TRVPParams,
         2U,
+        NULL);
+
+    xTaskCreate(
+        TaskIHM,
+        "IHM",
+        configMINIMAL_STACK_SIZE,
+        &ihmParams,
+        tskIDLE_PRIORITY,
         NULL);*/
 
 #ifdef TEST_ISR

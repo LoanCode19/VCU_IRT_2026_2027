@@ -43,7 +43,13 @@ typedef enum messageIds
     calculatedSpeedId,
     processedThrottleId,
 
-    throttleCmdId
+    throttleCmdId,
+
+    hbledId,
+    faultLightId,
+    r2dBuzzerId,
+    coolingPumpId,
+    coolingFansId,
 
 } MessageIds;
 
@@ -81,9 +87,8 @@ typedef enum speedStatus
 typedef enum Order
 {
     FaultLight = 0,
-    CoolingPump = 1,
-    CoolingFans = 2,
-    R2Dbuzzer = 3,
+    R2Dbuzzer = 1,
+    HBLed = 2,
 
 } Order_t;
 
