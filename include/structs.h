@@ -87,8 +87,10 @@ typedef enum speedStatus
 typedef enum Order
 {
     FaultLight = 0,
-    R2Dbuzzer = 1,
-    HBLed = 2,
+    CoolingPump = 1,
+    CoolingFans = 2,
+    R2Dbuzzer = 3,
+    HBLed = 4,
 
 } Order_t;
 
