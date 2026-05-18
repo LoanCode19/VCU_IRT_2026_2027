@@ -8,6 +8,7 @@
 
 #include "console.h"
 #include "TaskCanRX.h"
+#include <string.h>
 
 #include <stdio.h>
 #include <stdlib.h>

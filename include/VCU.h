@@ -4,5 +4,6 @@
 
 void initThrottleValues();
 void MainApp();
+void wdgRegisterTasks();
 
 #endif // VCU_H

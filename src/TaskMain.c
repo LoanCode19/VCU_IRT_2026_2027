@@ -4,6 +4,7 @@
 #include "queue.h"
 
 #include "structs.h"
+#include "project_config.h"
 
 #include "console.h"
 #include "TaskMain.h"
@@ -25,6 +26,8 @@ void TaskMain(void *pvParameters)
     QueueHandle_t *xTRVPQueu = params->xTRVPQueue;
     QueueHandle_t *xIHMQueue = params->xIHMQueue;
     QueueHandle_t *xCanTxQueue = params->xCanTxQueue;
+    QueueHandle_t *xWDGQueue = params->xWDGQueue;
+    TaskId taskId = params->taskId;
 
     mainState.inverterTemp.timeStatus = STATUS_NOT_READY;
     mainState.motorTemp.timeStatus = STATUS_NOT_READY;
@@ -36,7 +39,7 @@ void TaskMain(void *pvParameters)
     {
         // console_print((ledState = !ledState) ? "Led2 ON\n" : "Led2 OFF\n");
         dataMessage_t msg = {0};
-        xQueuePeek(*xMainQueue, &msg, pdMS_TO_TICKS(500));
+        xQueuePeek(*xMainQueue, &msg, TRVP_TIMEOUT);
 
         console_print("------(B)MainState------\n");
 
@@ -79,6 +82,11 @@ void TaskMain(void *pvParameters)
         }
 
         PrintMainState(&mainState);
+
+#ifdef USE_WDG
+        // feed WDG
+        wdgFeed(taskId, xTaskGetTickCount(), xWDGQueue);
+#endif
 
         console_print("------(E)MainState------\n\n");
     }
