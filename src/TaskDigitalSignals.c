@@ -12,7 +12,7 @@ void TaskDigitalSignals(void *pvParameters)
 
     if ((xDSQueue == NULL) || (*xDSQueue == NULL))
     {
-        vTaskDelete(NULL);
+        // vTaskDelete(NULL);
     }
 
     for (;;)

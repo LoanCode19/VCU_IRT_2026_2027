@@ -101,11 +101,4 @@ typedef struct
 
 } DigitalOrder_t;
 
-typedef struct
-{
-    Order_t order;
-    bool state;
-
-} DigitalOrder_t;
-
 #endif // STRUCTS_H

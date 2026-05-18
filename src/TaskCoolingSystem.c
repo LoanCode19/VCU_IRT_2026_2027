@@ -89,10 +89,10 @@ static void PublishCoolingOrder(Order_t order, bool state)
 static void PublishCoolingOrdersIfChanged(CoolingState_t *state, bool pumpEnabled, bool fansEnabled)
 {
 	bool publishPump = (!state->hasPublishedOrders) ||
-		(pumpEnabled != state->lastPublishedPumpEnabled);
+					   (pumpEnabled != state->lastPublishedPumpEnabled);
 
 	bool publishFans = (!state->hasPublishedOrders) ||
-		(fansEnabled != state->lastPublishedFansEnabled);
+					   (fansEnabled != state->lastPublishedFansEnabled);
 
 	if (publishPump)
 	{
@@ -124,7 +124,7 @@ static void EvaluateCooling(CoolingState_t *state)
 	if ((!motorValid) && (!inverterValid))
 	{
 		bool hasTimedOut = (state->motorTemp.timeStatus == STATUS_TIMEOUT) ||
-			(state->inverterTemp.timeStatus == STATUS_TIMEOUT);
+						   (state->inverterTemp.timeStatus == STATUS_TIMEOUT);
 
 		state->pumpEnabled = hasTimedOut;
 		state->fansEnabled = hasTimedOut;
@@ -169,7 +169,7 @@ void TaskCoolingSystem(void *pvParameters)
 
 	if ((xTCSQueue == NULL) || (*xTCSQueue == NULL))
 	{
-		vTaskDelete(NULL);
+		// vTaskDelete(NULL);
 	}
 
 	for (;;)
