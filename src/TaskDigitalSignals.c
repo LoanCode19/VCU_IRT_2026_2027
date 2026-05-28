@@ -1,9 +1,35 @@
+#include <stdbool.h>
+
 #include "FreeRTOS.h"
 #include "task.h"
 #include "queue.h"
 
 #include "structs.h"
 #include "TaskDigitalSignals.h"
+
+static void setOutputGpio(Order_t order, bool state)
+{
+    switch (order)
+    {
+    case FaultLight:
+        // TODO: drive the fault light GPIO with `state`
+        break;
+    case CoolingPump:
+        // TODO: drive the cooling pump GPIO with `state`
+        break;
+    case CoolingFans:
+        // TODO: drive the cooling fans GPIO with `state`
+        break;
+    case R2Dbuzzer:
+        // TODO: drive the R2D buzzer GPIO with `state`
+        break;
+    case HBLed:
+        // TODO: drive the heartbeat LED GPIO with `state`
+        break;
+    default:
+        break;
+    }
+}
 
 void TaskDigitalSignals(void *pvParameters)
 {
@@ -19,9 +45,7 @@ void TaskDigitalSignals(void *pvParameters)
     {
         if (xQueueReceive(*xDSQueue, &orderMsg, portMAX_DELAY) == pdPASS)
         {
-            // Queue is consumed for now, digital output handling will be added later.
-            (void)orderMsg.order;
-            (void)orderMsg.state;
+            setOutputGpio(orderMsg.order, orderMsg.state);
         }
     }
 }
