@@ -14,11 +14,13 @@
 
 #include "TaskCanRX.h"
 #include "TaskMain.h"
+#include "TaskIHM.h"
 #include "VCU.h"
 #include "throttle.h"
 #include "utils.h"
 #include "TaskCanTx.h"
 #include "TaskRawValuesProcessing.h"
+#include "TaskWDG.h"
 
 #ifdef TEST_ISR
 #include "CanISREmulator.h"
@@ -32,15 +34,20 @@ void MainApp(void)
     xIHMQueue = xQueueCreate(10, sizeof(IHMOrder_t));
     xCanTxQueue = xQueueCreate(10, sizeof(dataMessage_t));
     xCanRxQueue = xQueueCreate(10, sizeof(dataCan));
-    xDSQueue = xQueueCreate(10, sizeof(IHMOrder_t));
+    xWDGQueue = xQueueCreate(10, sizeof(WdgMessage_t));
+    xDSQueue = xQueueCreate(10, sizeof(DigitalOrder_t));
 
     initThrottleValues();
     // GetUserThrottleCommand();
 
-    MainParams_t mainTaskParam = {&xMainQueue, &xTRVPQueue, &xIHMQueue, &xCanTxQueue};
-    CanRxParams_t canRxParams = {&xMainQueue, &xTRVPQueue, &xCanRxQueue};
-    CanTxParam_t canTxParams = {&xCanTxQueue};
-    TRVPParams_t TRVPParams = {&xTRVPQueue, &xMainQueue};
+    MainParams_t mainTaskParam = {&xMainQueue, &xTRVPQueue, &xIHMQueue, &xCanTxQueue, &xWDGQueue, TaskMainId};
+    CanRxParams_t canRxParams = {&xMainQueue, &xTRVPQueue, &xCanRxQueue, &xWDGQueue, TaskCanRxId};
+    CanTxParam_t canTxParams = {&xCanTxQueue, &xWDGQueue, TaskCanTxId};
+    TRVPParams_t TRVPParams = {&xTRVPQueue, &xMainQueue, &xWDGQueue, TaskTRVPId};
+    TaskIHMParam_t ihmParams = {&xIHMQueue, &xDSQueue, &xWDGQueue, TaskIHMId};
+#ifdef USE_WDG
+    WdgParams_t wdgParams = {&xWDGQueue};
+#endif
     xTaskCreate(
         TaskCanRx,
         "CAN_RX",
@@ -71,6 +78,14 @@ void MainApp(void)
         configMINIMAL_STACK_SIZE,
         &TRVPParams,
         2U,
+        NULL);
+
+    xTaskCreate(
+        TaskIHM,
+        "IHM",
+        configMINIMAL_STACK_SIZE,
+        &ihmParams,
+        tskIDLE_PRIORITY,
         NULL);*/
 
 #ifdef TEST_ISR
@@ -83,6 +98,18 @@ void MainApp(void)
         NULL);
 
 #endif
+#ifdef USE_WDG
+    xTaskCreate(
+        TaskWDG,
+        "WDG",
+        configMINIMAL_STACK_SIZE,
+        &wdgParams,
+        tskIDLE_PRIORITY,
+        NULL);
+
+    wdgRegisterTasks();
+
+#endif
 
     vTaskStartScheduler();
 
@@ -91,12 +118,23 @@ void MainApp(void)
     }
 }
 
+#ifdef USE_WDG
+void wdgRegisterTasks()
+{
+    /*wdgRegister(TaskMainId, MAIN_WDG_TIMEOUT, wdgTimeoutTable);
+    wdgRegister(TaskTRVPId, TRVP_WDG_TIMEOUT, wdgTimeoutTable);
+    wdgRegister(TaskIHMId, IHM_WDG_TIMEOUT, wdgTimeoutTable);
+    wdgRegister(TaskCanTxId, CAN_TX_WDG_TIMEOUT, wdgTimeoutTable);*/
+    wdgRegister(TaskCanRxId, CAN_RX_WDG_TIMEOUT, wdgTimeoutTable);
+}
+#endif
+
 void initThrottleValues()
 {
     potmin[0] = 100;      // ADC raw min for pedal sensor 1
     potmin[1] = 100;      // ADC raw min for pedal sensor 2
     potmax[0] = 3900;     // ADC raw max for pedal sensor 1
-    potmax[1] = 3900;     // ADC raw max for pedal
+    potmax[1] = 3900;     // ADC raw max for pedal sensor 2
     regenRpm = 1000.0f;   // Start applying regen above this RPM
     regenendRpm = 200.0f; // Regen fades out below this RPM
     brknompedal = 0.0f;   // Neutral brake pedal level

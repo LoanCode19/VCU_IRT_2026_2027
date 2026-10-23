@@ -4,6 +4,7 @@
 #include "utils.h"
 #include "my_math.h"
 #include "project_config.h"
+#include "console.h"
 
 #define POT_SLACK 200
 

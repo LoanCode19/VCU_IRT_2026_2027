@@ -1,3 +1,4 @@
+#include "structs.h"
 
 #ifdef LINUX
 int CAN_ReadNext(dataCan *msg);

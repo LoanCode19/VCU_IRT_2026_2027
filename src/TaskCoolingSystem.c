@@ -7,6 +7,7 @@
 
 #include "structs.h"
 #include "queueHandles.h"
+#include "utils.h"
 #include "TaskCoolingSystem.h"
 
 #ifndef COOLING_RX_TIMEOUT_MS
@@ -15,6 +16,10 @@
 
 #ifndef COOLING_TX_TIMEOUT_MS
 #define COOLING_TX_TIMEOUT_MS 5U
+#endif
+
+#ifndef COOLING_TEMP_TIMEOUT_MS
+#define COOLING_TEMP_TIMEOUT_MS 500U
 #endif
 
 #ifndef COOLING_PUMP_ON_TEMP_C
@@ -33,72 +38,19 @@
 #define COOLING_FANS_OFF_TEMP_C 50
 #endif
 
-#ifndef COOLING_PUMP_MIN_LEVEL_PERCENT
-#define COOLING_PUMP_MIN_LEVEL_PERCENT 40U
-#endif
-
-#ifndef COOLING_FANS_MIN_LEVEL_PERCENT
-#define COOLING_FANS_MIN_LEVEL_PERCENT 40U
-#endif
-
-int32_t maxTemp;
-
 typedef struct
 {
-	int32_t motorTemp;
-	int32_t inverterTemp;
-	bool hasMotorTemp;
-	bool hasInverterTemp;
+	dataMessage_t motorTemp;
+	dataMessage_t inverterTemp;
 	bool pumpEnabled;
 	bool fansEnabled;
-	uint8_t pumpLevelPercent;
-	uint8_t fansLevelPercent;
+	bool hasPublishedOrders;
+	bool lastPublishedPumpEnabled;
+	bool lastPublishedFansEnabled;
 } CoolingState_t;
 
 static bool sPumpEnabled = false;
 static bool sFansEnabled = false;
-static uint8_t sPumpLevelPercent = 0U;
-static uint8_t sFansLevelPercent = 0U;
-
-static uint8_t ComputePumpLevelPercent(int32_t hottestTemp)
-{
-	if (hottestTemp >= 70)
-	{
-		return 100U;
-	}
-
-	if (hottestTemp >= 60)
-	{
-		return 70U;
-	}
-
-	if (hottestTemp >= 50)
-	{
-		return 40U;
-	}
-
-	return 0U;
-}
-
-static uint8_t ComputeFansLevelPercent(int32_t hottestTemp)
-{
-	if (hottestTemp >= 75)
-	{
-		return 100U;
-	}
-
-	if (hottestTemp >= 65)
-	{
-		return 70U;
-	}
-
-	if (hottestTemp >= 55)
-	{
-		return 40U;
-	}
-
-	return 0U;
-}
 
 static bool ApplyOnOffHysteresis(bool currentlyEnabled, int32_t measuredTemp, int32_t onThreshold, int32_t offThreshold)
 {
@@ -120,19 +72,9 @@ static void ToggleCoolingFans(bool state)
 	sFansEnabled = state;
 }
 
-static void SetCoolingPumpsLevel(uint8_t levelPercent)
-{
-	sPumpLevelPercent = levelPercent;
-}
-
-static void SetCoolingFansLevel(uint8_t levelPercent)
-{
-	sFansLevelPercent = levelPercent;
-}
-
 static void PublishCoolingOrder(Order_t order, bool state)
 {
-	IHMOrder_t outputOrder = {0};
+	DigitalOrder_t outputOrder = {0};
 
 	if (xDSQueue == NULL)
 	{
@@ -144,24 +86,59 @@ static void PublishCoolingOrder(Order_t order, bool state)
 	(void)xQueueSend(xDSQueue, &outputOrder, pdMS_TO_TICKS(COOLING_TX_TIMEOUT_MS));
 }
 
+static void PublishCoolingOrdersIfChanged(CoolingState_t *state, bool pumpEnabled, bool fansEnabled)
+{
+	bool publishPump = (!state->hasPublishedOrders) ||
+					   (pumpEnabled != state->lastPublishedPumpEnabled);
+
+	bool publishFans = (!state->hasPublishedOrders) ||
+					   (fansEnabled != state->lastPublishedFansEnabled);
+
+	if (publishPump)
+	{
+		PublishCoolingOrder(CoolingPump, pumpEnabled);
+	}
+
+	if (publishFans)
+	{
+		PublishCoolingOrder(CoolingFans, fansEnabled);
+	}
+
+	state->hasPublishedOrders = true;
+	state->lastPublishedPumpEnabled = pumpEnabled;
+	state->lastPublishedFansEnabled = fansEnabled;
+}
+
+static void RefreshTemperatureStatuses(CoolingState_t *state, TickType_t now)
+{
+	updateDataTimeStatus(&state->motorTemp, 1, COOLING_TEMP_TIMEOUT_MS, now);
+	updateDataTimeStatus(&state->inverterTemp, 1, COOLING_TEMP_TIMEOUT_MS, now);
+}
+
 static void EvaluateCooling(CoolingState_t *state)
 {
-	int32_t hottestTemp = state->motorTemp;
-	uint8_t requestedPumpLevel = 0U;
-	uint8_t requestedFansLevel = 0U;
+	bool motorValid = (state->motorTemp.timeStatus == STATUS_TIME_OK);
+	bool inverterValid = (state->inverterTemp.timeStatus == STATUS_TIME_OK);
+	int32_t hottestTemp = 0;
 
-	if ((!state->hasMotorTemp) && (!state->hasInverterTemp))
+	if ((!motorValid) && (!inverterValid))
 	{
+		bool hasTimedOut = (state->motorTemp.timeStatus == STATUS_TIMEOUT) ||
+						   (state->inverterTemp.timeStatus == STATUS_TIMEOUT);
+
+		state->pumpEnabled = hasTimedOut;
+		state->fansEnabled = hasTimedOut;
+
+		ToggleCoolingPumps(state->pumpEnabled);
+		ToggleCoolingFans(state->fansEnabled);
 		return;
 	}
 
-	if (state->hasInverterTemp && ((!state->hasMotorTemp) || (state->inverterTemp > hottestTemp)))
+	hottestTemp = motorValid ? state->motorTemp.data : state->inverterTemp.data;
+	if (inverterValid && ((!motorValid) || (state->inverterTemp.data > hottestTemp)))
 	{
-		hottestTemp = state->inverterTemp;
+		hottestTemp = state->inverterTemp.data;
 	}
-
-	requestedPumpLevel = ComputePumpLevelPercent(hottestTemp);
-	requestedFansLevel = ComputeFansLevelPercent(hottestTemp);
 
 	state->pumpEnabled = ApplyOnOffHysteresis(
 		state->pumpEnabled,
@@ -175,36 +152,8 @@ static void EvaluateCooling(CoolingState_t *state)
 		COOLING_FANS_ON_TEMP_C,
 		COOLING_FANS_OFF_TEMP_C);
 
-	if (state->pumpEnabled)
-	{
-		state->pumpLevelPercent = requestedPumpLevel;
-		if (state->pumpLevelPercent < COOLING_PUMP_MIN_LEVEL_PERCENT)
-		{
-			state->pumpLevelPercent = COOLING_PUMP_MIN_LEVEL_PERCENT;
-		}
-	}
-	else
-	{
-		state->pumpLevelPercent = 0U;
-	}
-
-	if (state->fansEnabled)
-	{
-		state->fansLevelPercent = requestedFansLevel;
-		if (state->fansLevelPercent < COOLING_FANS_MIN_LEVEL_PERCENT)
-		{
-			state->fansLevelPercent = COOLING_FANS_MIN_LEVEL_PERCENT;
-		}
-	}
-	else
-	{
-		state->fansLevelPercent = 0U;
-	}
-
-	SetCoolingPumpsLevel(state->pumpLevelPercent);
 	ToggleCoolingPumps(state->pumpEnabled);
 	ToggleCoolingFans(state->fansEnabled);
-	SetCoolingFansLevel(state->fansLevelPercent);
 }
 
 void TaskCoolingSystem(void *pvParameters)
@@ -213,40 +162,49 @@ void TaskCoolingSystem(void *pvParameters)
 	dataMessage_t incomingMsg = {0};
 	CoolingState_t state = {0};
 
+	state.motorTemp.id = motor_tempId;
+	state.inverterTemp.id = inverter_tempId;
+	state.motorTemp.timeStatus = STATUS_NOT_READY;
+	state.inverterTemp.timeStatus = STATUS_NOT_READY;
+
 	if ((xTCSQueue == NULL) || (*xTCSQueue == NULL))
 	{
-		vTaskDelete(NULL);
+		// vTaskDelete(NULL);
 	}
 
 	for (;;)
 	{
+		bool hasNewMeasurement = false;
+		DataTimeStatus_t previousMotorStatus = state.motorTemp.timeStatus;
+		DataTimeStatus_t previousInverterStatus = state.inverterTemp.timeStatus;
+
 		if (xQueueReceive(*xTCSQueue, &incomingMsg, pdMS_TO_TICKS(COOLING_RX_TIMEOUT_MS)) == pdPASS)
 		{
-			bool shouldEvaluate = false;
-
 			if (incomingMsg.id == motor_tempId)
 			{
-				state.motorTemp = incomingMsg.data;
-				state.hasMotorTemp = true;
-				shouldEvaluate = true;
+				state.motorTemp = incomingMsg;
+				state.motorTemp.timeStatus = STATUS_TIME_OK;
+				hasNewMeasurement = true;
 			}
 			else if (incomingMsg.id == inverter_tempId)
 			{
-				state.inverterTemp = incomingMsg.data;
-				state.hasInverterTemp = true;
-				shouldEvaluate = true;
-			}
-
-			if (shouldEvaluate)
-			{
-				EvaluateCooling(&state);
-				PublishCoolingOrder(CoolingPump, sPumpEnabled);
-				PublishCoolingOrder(CoolingFans, sFansEnabled);
+				state.inverterTemp = incomingMsg;
+				state.inverterTemp.timeStatus = STATUS_TIME_OK;
+				hasNewMeasurement = true;
 			}
 		}
-		(void)sPumpEnabled;
-		(void)sFansEnabled;
-		(void)sPumpLevelPercent;
-		(void)sFansLevelPercent;
+
+		RefreshTemperatureStatuses(&state, xTaskGetTickCount());
+
+		if (hasNewMeasurement ||
+			(previousMotorStatus != state.motorTemp.timeStatus) ||
+			(previousInverterStatus != state.inverterTemp.timeStatus))
+		{
+			EvaluateCooling(&state);
+			PublishCoolingOrdersIfChanged(
+				&state,
+				sPumpEnabled,
+				sFansEnabled);
+		}
 	}
 }

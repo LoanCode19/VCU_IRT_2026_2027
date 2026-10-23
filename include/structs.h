@@ -2,16 +2,29 @@
 #include <stdbool.h>
 #include "FreeRTOS.h"
 #include "queue.h"
+#include "project_config.h"
 
 #ifndef STRUCTS_H
 #define STRUCTS_H
-
+// enums
 typedef enum
 {
     STATUS_TIME_OK = 0,
     STATUS_TIMEOUT,
     STATUS_NOT_READY,
 } DataTimeStatus_t;
+
+// MUST BEGIN AT ZERO
+typedef enum TasksIds
+{
+    TaskCanRxId,
+    TaskTRVPId,
+    TaskIHMId,
+    TaskCanTxId,
+    TaskMainId,
+
+} TaskId; // MUST BEGIN AT ZERO
+// enums
 
 typedef enum messageIds
 {
@@ -30,9 +43,21 @@ typedef enum messageIds
     calculatedSpeedId,
     processedThrottleId,
 
-    throttleCmdId
+    throttleCmdId,
+
+    hbledId,
+    faultLightId,
+    r2dBuzzerId,
+    coolingPumpId,
+    coolingFansId,
 
 } MessageIds;
+
+typedef struct
+{
+    TaskId taskId;
+    TickType_t timestamp;
+} WdgMessage_t;
 
 typedef struct
 {
@@ -49,47 +74,7 @@ typedef struct
     uint32_t data;
 } dataCan;
 
-typedef struct
-{
-    dataMessage_t ThrottleCommand; // calculated throttle command to be sent to the inverter
-    dataMessage_t speed;           // calculated speed
-
-    dataMessage_t motorTemp;
-    dataMessage_t inverterTemp;
-    dataMessage_t Voltage;
-
-    bool brakePedalPressed; // true if brake pedal is pressed, false otherwise
-    TickType_t lastCheckedBreakPedal;
-
-    TickType_t lastCallTimeStmp;
-
-    bool direction; // true for forward, false for reverse
-
-} MainState_t;
-
-typedef struct
-{
-    // int32_t ThrottleCommand; // calculated throttle command to be sent to the inverter
-    uint32_t speed; // calculated speed
-
-    dataMessage_t wheelSpeeds[4];
-    dataMessage_t appsValues[2];
-
-    bool brakePedalPressed; // true if brake pedal is pressed, false otherwise
-    TickType_t lastCheckedBreakPedal;
-
-    TickType_t lastCallTimeStmp;
-
-} TRVPState_t;
-
-typedef enum Order
-{
-    FaultLight = 0,
-    CoolingPump = 1,
-    CoolingFans = 2,
-    R2Dbuzzer = 3,
-
-} Order_t;
+typedef TickType_t WDGTimoutTable[MAX_TASKS];
 
 typedef enum speedStatus
 {
@@ -99,6 +84,16 @@ typedef enum speedStatus
 
 } SpeedStatus;
 
+typedef enum Order
+{
+    FaultLight = 0,
+    CoolingPump = 1,
+    CoolingFans = 2,
+    R2Dbuzzer = 3,
+    HBLed = 4,
+
+} Order_t;
+
 typedef struct
 {
     Order_t order;
@@ -106,34 +101,11 @@ typedef struct
 
 } IHMOrder_t;
 
-//
-//
-//
-//
-// Tasks parameters
 typedef struct
 {
-    QueueHandle_t *xMainQueue;
-    QueueHandle_t *xTRVPQueue;
-    QueueHandle_t *xIHMQueue;
-    QueueHandle_t *xCanTxQueue;
-} MainParams_t;
+    Order_t order;
+    bool state;
 
-typedef struct
-{
-    QueueHandle_t *xMainQueue;
-    QueueHandle_t *xTRVPQueue;
-    QueueHandle_t *xCanRxQueue;
-} CanRxParams_t;
+} DigitalOrder_t;
 
-typedef struct
-{
-    QueueHandle_t *xCanTxQueue;
-} CanTxParam_t;
-
-typedef struct
-{
-    QueueHandle_t *xTRVPQueue;
-    QueueHandle_t *xMainQueue;
-} TRVPParams_t;
 #endif // STRUCTS_H
