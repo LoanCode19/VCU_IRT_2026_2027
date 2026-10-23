@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <projectDescription>
-	<name>test_ide</name>
+	<name>VCU_STM32F407</name>
 	<comment></comment>
 	<projects>
 	</projects>
@@ -29,4 +29,26 @@
 		<nature>org.eclipse.cdt.managedbuilder.core.managedBuildNature</nature>
 		<nature>org.eclipse.cdt.managedbuilder.core.ScannerConfigNature</nature>
 	</natures>
+	<linkedResources>
+		<link>
+			<name>VCU_APP</name>
+			<type>2</type>
+			<locationURI>virtual:/virtual</locationURI>
+		</link>
+		<link>
+			<name>VCU_APP/Emulators</name>
+			<type>2</type>
+			<locationURI>PARENT-1-PROJECT_LOC/Emulators</locationURI>
+		</link>
+		<link>
+			<name>VCU_APP/include</name>
+			<type>2</type>
+			<locationURI>PARENT-1-PROJECT_LOC/include</locationURI>
+		</link>
+		<link>
+			<name>VCU_APP/src</name>
+			<type>2</type>
+			<locationURI>PARENT-1-PROJECT_LOC/src</locationURI>
+		</link>
+	</linkedResources>
 </projectDescription>
