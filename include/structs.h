@@ -45,12 +45,6 @@ typedef enum messageIds
 
     inverterTorqueCmdId,
 
-    hbledId,
-    faultLightId,
-    r2dBuzzerId,
-    coolingPumpId,
-    coolingFansId,
-
 } MessageIds;
 
 typedef struct

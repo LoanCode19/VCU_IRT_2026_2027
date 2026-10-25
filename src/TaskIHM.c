@@ -9,25 +9,11 @@
 #include "utils.h"
 #include "TaskIHM.h"
 
-static void sendDSOrder(QueueHandle_t *queueDS, MessageIds id, bool state)
+// Transmet l'ordre a TaskDigitalSignals, dans le format que xDSQueue transporte
+static void sendDSOrder(QueueHandle_t *queueDS, Order_t order, bool state)
 {
-    dataMessage_t msg = {.id = id, .data = (int32_t)state, .timestamp = xTaskGetTickCount()};
+    DigitalOrder_t msg = {.order = order, .state = state};
     xQueueSend(*queueDS, &msg, pdMS_TO_TICKS(5));
-}
-
-static void toggleHBLED(QueueHandle_t *queueDS, bool newState)
-{
-    sendDSOrder(queueDS, hbledId, newState);
-}
-
-static void toggleFaultLight(QueueHandle_t *queueDS, bool newState)
-{
-    sendDSOrder(queueDS, faultLightId, newState);
-}
-
-static void playR2DBuzzerSound(QueueHandle_t *queueDS, bool newState)
-{
-    sendDSOrder(queueDS, r2dBuzzerId, newState);
 }
 
 void TaskIHM(void *pvParameters)
@@ -43,17 +29,7 @@ void TaskIHM(void *pvParameters)
 
     for(;;){
         if(xQueueReceive(*queueIHM, &order, IHM_TIMEOUT) == pdPASS){
-            switch(order.order){
-                case HBLed:
-                    toggleHBLED(queueDS, order.state);
-                    break;
-                case R2Dbuzzer:
-                    playR2DBuzzerSound(queueDS, order.state);
-                    break;
-                case FaultLight:
-                    toggleFaultLight(queueDS, order.state);
-                    break;
-            }
+            sendDSOrder(queueDS, order.order, order.state);
         }
 
 #ifdef USE_WDG
