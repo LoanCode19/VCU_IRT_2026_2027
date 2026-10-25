@@ -18,11 +18,11 @@
 #include "test_app.h"
 #include "vcu_test.h"
 
-#define WDG_PERIOD_MS 1000U // WDG_TIMEOUT dans project_config.h
-#define MAX_REFRESH_LOG 16U
+#define WDG_PERIOD_MS ((TickType_t)WDG_TIMEOUT) // periode de TaskWDG (project_config.h)
 
 static unsigned sRefreshCount = 0;
-static TickType_t sRefreshTimes[MAX_REFRESH_LOG];
+static unsigned sLateRefreshCount = 0; // rafraichissements a partir de sLateFrom
+static TickType_t sLateFrom = 0xFFFFFFFFu;
 static TickType_t sFeedUntil = 0;
 
 static WdgParams_t sWdgParams;
@@ -30,11 +30,11 @@ static CanRxParams_t sCanRxParams;
 
 void test_refreshIWDG(void)
 {
-    if (sRefreshCount < MAX_REFRESH_LOG)
-    {
-        sRefreshTimes[sRefreshCount] = xTaskGetTickCount();
-    }
     sRefreshCount++;
+    if (xTaskGetTickCount() >= sLateFrom)
+    {
+        sLateRefreshCount++;
+    }
 }
 
 // Appelee a chaque reveil de TaskWDG : TaskCanRx nourrit le watchdog tant que now <= sFeedUntil
@@ -59,6 +59,8 @@ static void Setup(void)
     sWdgParams = (WdgParams_t){&xWDGQueue, 0};
     sCanRxParams = (CanRxParams_t){&xMainQueue, &xTRVPQueue, &xCanRxQueue, &xWDGQueue, TaskCanRxId};
     sRefreshCount = 0;
+    sLateRefreshCount = 0;
+    sLateFrom = 0xFFFFFFFFu;
     vTestSetTickAutoIncrement(false);
     vTestSetTickCount(0);
 }
@@ -74,34 +76,28 @@ static void TestWatchdog_RefreshWhenHealthy(void)
 {
     Setup();
     sFeedUntil = 0xFFFFFFFFu;
-    vTestSetDelayCallsBeforeEscape(5, FeedCanRx); // 5 periodes de 1 s
+    vTestSetDelayCallsBeforeEscape(5, FeedCanRx); // 5 periodes de TaskWDG
     RunTaskOnce(TaskWDG, &sWdgParams);
     vTestSetDelayCallsBeforeEscape(0, NULL);
 
     vt_check("W1a", "-", sRefreshCount == 5,
-             "5 periodes, toutes les taches a l'heure -> IWDG rafraichi %u fois (attendu 5)", sRefreshCount);
+             "5 periodes de %lu ms, toutes les taches a l'heure -> IWDG rafraichi %u fois (attendu 5)",
+             (unsigned long)WDG_PERIOD_MS, sRefreshCount);
 }
 
 static void TestWatchdog_NoRefreshWhenStalled(void)
 {
     Setup();
     sFeedUntil = 2000U; // TaskCanRx se fige apres t = 2 s
-    vTestSetDelayCallsBeforeEscape(6, FeedCanRx);
+    // Dernier signe de vie a 2000 ms : en retard apres son timeout, constate a la periode suivante
+    sLateFrom = sFeedUntil + CAN_RX_WDG_TIMEOUT + WDG_PERIOD_MS;
+    vTestSetDelayCallsBeforeEscape(6000U / WDG_PERIOD_MS, FeedCanRx); // jusqu'a t = 6 s
     RunTaskOnce(TaskWDG, &sWdgParams);
     vTestSetDelayCallsBeforeEscape(0, NULL);
 
-    // Dernier signe de vie a 2000 ms, timeout CanRx 1000 ms : en retard a partir de 4000 ms
-    unsigned lateRefresh = 0;
-    for (unsigned i = 0; (i < sRefreshCount) && (i < MAX_REFRESH_LOG); i++)
-    {
-        if (sRefreshTimes[i] >= 4000U)
-        {
-            lateRefresh++;
-        }
-    }
-    vt_check("W1b", "-", lateRefresh == 0,
-             "TaskCanRx figee depuis 2 s -> IWDG encore rafraichi %u fois (attendu 0 : la carte doit redemarrer)",
-             lateRefresh);
+    vt_check("W1b", "-", sLateRefreshCount == 0,
+             "TaskCanRx figee depuis 2 s -> IWDG encore rafraichi %u fois apres %lu ms (attendu 0 : la carte doit redemarrer)",
+             sLateRefreshCount, (unsigned long)sLateFrom);
 }
 
 static void TestWatchdog_CanRxWithoutTraffic(void)
