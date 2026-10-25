@@ -16,4 +16,7 @@ typedef uint32_t TickType_t;
 #define portMAX_DELAY ((TickType_t)0xffffffffu)
 #define pdMS_TO_TICKS(ms) ((TickType_t)(ms))
 
+// Valeur de la carte (VCU_STM32F407/Core/Inc/FreeRTOSConfig.h), utilisee par MainApp()
+#define configMINIMAL_STACK_SIZE ((uint16_t)128)
+
 #endif // TEST_HOST_FREERTOS_H
