@@ -158,7 +158,12 @@ static void EvaluateCooling(CoolingState_t *state)
 
 void TaskCoolingSystem(void *pvParameters)
 {
-	QueueHandle_t *xTCSQueue = (QueueHandle_t *)pvParameters;
+	CoolingParams_t *params = (CoolingParams_t *)pvParameters;
+	QueueHandle_t *xTCSQueue = params->xCoolingQueue;
+	QueueHandle_t *xWDGQueue = params->xWDGQueue;
+	TaskId taskId = params->taskId;
+	(void)xWDGQueue; /* used only when USE_WDG is defined */
+	(void)taskId;
 	dataMessage_t incomingMsg = {0};
 	CoolingState_t state = {0};
 
@@ -206,5 +211,9 @@ void TaskCoolingSystem(void *pvParameters)
 				sPumpEnabled,
 				sFansEnabled);
 		}
+
+#ifdef USE_WDG
+		wdgFeed(taskId, xTaskGetTickCount(), xWDGQueue);
+#endif
 	}
 }

@@ -1,6 +1,6 @@
 // Secteur : watchdog
 // Code teste : TaskWDG (src/TaskWDG.c) et l'alimentation du watchdog par TaskCanRx
-// Problemes : W1, W3, W4 de AUDIT_VCU.md (W2 est verifie par le test statique)
+// Problemes : W1, W3, W4, W5 de AUDIT_VCU.md (W2 est verifie par le test statique)
 //
 // Compile avec -DUSE_WDG et -DrefreshIWDG=test_refreshIWDG : ce renommage remplace le
 // rafraichissement de l'IWDG de la carte par une fonction de test qui compte les appels.
@@ -15,6 +15,8 @@
 #include "utils.h"
 #include "TaskCanRX.h"
 #include "TaskWDG.h"
+#include "TaskDigitalSignals.h"
+#include "TaskCoolingSystem.h"
 #include "test_app.h"
 #include "vcu_test.h"
 
@@ -27,6 +29,8 @@ static TickType_t sFeedUntil = 0;
 
 static WdgParams_t sWdgParams;
 static CanRxParams_t sCanRxParams;
+static DigitalSignalsParams_t sDigitalParams;
+static CoolingParams_t sCoolingParams;
 
 void test_refreshIWDG(void)
 {
@@ -67,9 +71,9 @@ static void Setup(void)
 
 static void TestWatchdog_TableSize(void)
 {
-    vt_check("W3a", "-", MAX_TASKS >= (TaskMainId + 1),
+    vt_check("W3a", "-", MAX_TASKS >= TASK_COUNT,
              "MAX_TASKS = %d pour %d taches declarees dans TaskId (attendu >= %d)",
-             MAX_TASKS, TaskMainId + 1, TaskMainId + 1);
+             MAX_TASKS, TASK_COUNT, TASK_COUNT);
 }
 
 static void TestWatchdog_RefreshWhenHealthy(void)
@@ -113,6 +117,32 @@ static void TestWatchdog_CanRxWithoutTraffic(void)
              feeds);
 }
 
+// TaskDigitalSignals sans ordre, TaskCoolingSystem sans temperature : elles doivent quand meme
+// nourrir le watchdog, sinon elles seraient declarees mortes
+static void TestWatchdog_OutputTasksWithoutMessages(void)
+{
+    Setup();
+    xDSQueue = xQueueCreate(10, sizeof(DigitalOrder_t));
+    sDigitalParams = (DigitalSignalsParams_t){&xDSQueue, &xWDGQueue, TaskDigitalSignalsId};
+    vTestSetBlockingTimeoutsBeforeEscape(10); // jusqu'a 10 attentes avec timeout
+    RunTaskOnce(TaskDigitalSignals, &sDigitalParams);
+    vTestSetBlockingTimeoutsBeforeEscape(0);
+    unsigned feeds = (unsigned)uxTestQueueCount(xWDGQueue);
+    vt_check("W5a", "-", feeds >= 1U,
+             "aucun ordre de sortie -> TaskDigitalSignals nourrit le watchdog %u fois (attendu >= 1)", feeds);
+
+    Setup();
+    xDSQueue = xQueueCreate(10, sizeof(DigitalOrder_t));
+    xCoolingQueue = xQueueCreate(10, sizeof(dataMessage_t));
+    sCoolingParams = (CoolingParams_t){&xCoolingQueue, &xWDGQueue, TaskCoolingId};
+    vTestSetBlockingTimeoutsBeforeEscape(10);
+    RunTaskOnce(TaskCoolingSystem, &sCoolingParams);
+    vTestSetBlockingTimeoutsBeforeEscape(0);
+    feeds = (unsigned)uxTestQueueCount(xWDGQueue);
+    vt_check("W5b", "-", feeds >= 1U,
+             "aucune temperature -> TaskCoolingSystem nourrit le watchdog %u fois (attendu >= 1)", feeds);
+}
+
 int main(void)
 {
     vt_begin("Watchdog");
@@ -121,6 +151,7 @@ int main(void)
     TestWatchdog_RefreshWhenHealthy();
     TestWatchdog_NoRefreshWhenStalled();
     TestWatchdog_CanRxWithoutTraffic();
+    TestWatchdog_OutputTasksWithoutMessages();
 
     return vt_end();
 }

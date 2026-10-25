@@ -66,6 +66,8 @@ void MainApp(void)
     static CanTxParam_t canTxParams = {&xCanTxQueue, &xWDGQueue, TaskCanTxId};
     static TRVPParams_t TRVPParams = {&xTRVPQueue, &xMainQueue, &xWDGQueue, TaskTRVPId};
     static TaskIHMParam_t ihmParams = {&xIHMQueue, &xDSQueue, &xWDGQueue, TaskIHMId};
+    static DigitalSignalsParams_t digitalSignalsParams = {&xDSQueue, &xWDGQueue, TaskDigitalSignalsId};
+    static CoolingParams_t coolingParams = {&xCoolingQueue, &xWDGQueue, TaskCoolingId};
 #ifdef USE_WDG
     static WdgParams_t wdgParams = {&xWDGQueue};
 #endif
@@ -75,8 +77,8 @@ void MainApp(void)
     CreateTask(TaskMain, "MAIN", 512, &mainTaskParam, 5);
     CreateTask(TaskCanTx, "CAN_TX", 512, &canTxParams, 5);
     CreateTask(TaskRawValuesProcessing, "TRVP", 512, &TRVPParams, 4);
-    CreateTask(TaskDigitalSignals, "DIGITAL", 256, &xDSQueue, 3);
-    CreateTask(TaskCoolingSystem, "COOLING", 256, &xCoolingQueue, 2);
+    CreateTask(TaskDigitalSignals, "DIGITAL", 256, &digitalSignalsParams, 3);
+    CreateTask(TaskCoolingSystem, "COOLING", 256, &coolingParams, 2);
     CreateTask(TaskIHM, "IHM", 256, &ihmParams, 2);
 
 #ifdef TEST_ISR
@@ -98,6 +100,8 @@ void wdgRegisterTasks()
     wdgRegister(TaskIHMId, IHM_WDG_TIMEOUT, wdgTimeoutTable);
     wdgRegister(TaskCanTxId, CAN_TX_WDG_TIMEOUT, wdgTimeoutTable);
     wdgRegister(TaskCanRxId, CAN_RX_WDG_TIMEOUT, wdgTimeoutTable);
+    wdgRegister(TaskDigitalSignalsId, DS_WDG_TIMEOUT, wdgTimeoutTable);
+    wdgRegister(TaskCoolingId, COOLING_WDG_TIMEOUT, wdgTimeoutTable);
 }
 #endif
 

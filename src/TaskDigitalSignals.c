@@ -5,6 +5,7 @@
 #include "queue.h"
 
 #include "structs.h"
+#include "utils.h"
 #include "TaskDigitalSignals.h"
 
 static void setOutputGpio(Order_t order, bool state)
@@ -33,7 +34,12 @@ static void setOutputGpio(Order_t order, bool state)
 
 void TaskDigitalSignals(void *pvParameters)
 {
-    QueueHandle_t *xDSQueue = (QueueHandle_t *)pvParameters;
+    DigitalSignalsParams_t *params = (DigitalSignalsParams_t *)pvParameters;
+    QueueHandle_t *xDSQueue = params->xDSQueue;
+    QueueHandle_t *xWDGQueue = params->xWDGQueue;
+    TaskId taskId = params->taskId;
+    (void)xWDGQueue; /* used only when USE_WDG is defined */
+    (void)taskId;
     DigitalOrder_t orderMsg = {0};
 
     if ((xDSQueue == NULL) || (*xDSQueue == NULL))
@@ -43,9 +49,14 @@ void TaskDigitalSignals(void *pvParameters)
 
     for (;;)
     {
-        if (xQueueReceive(*xDSQueue, &orderMsg, portMAX_DELAY) == pdPASS)
+        // Attente limitee : un tour au moins toutes les DS_TIMEOUT, meme sans ordre, pour le watchdog
+        if (xQueueReceive(*xDSQueue, &orderMsg, DS_TIMEOUT) == pdPASS)
         {
             setOutputGpio(orderMsg.order, orderMsg.state);
         }
+
+#ifdef USE_WDG
+        wdgFeed(taskId, xTaskGetTickCount(), xWDGQueue);
+#endif
     }
 }
