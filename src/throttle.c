@@ -76,7 +76,7 @@ float inverterTempMax;
  * @return true if the throttle input was within bounds (accounting for POT_SLACK).
  * @return false the throttle was too far out of bounds. Setting potval to the minimum.
  */
-bool CheckAndLimitRange(int *potval, int potIdx)
+bool CheckAndLimitRange(int32_t *potval, int potIdx)
 {
     // The range check accounts for inverted throttle pedals, where the minimum
     // value is higher than the maximum. To accomodate for that, the potMin and potMax
