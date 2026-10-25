@@ -2,3 +2,9 @@ build
 
 # Règlement Formula Student : document externe, gardé en local uniquement
 FS-Rules*.pdf
+
+# Documentation Markdown : gardée en local, jamais versionnée
+*.md
+
+# Caches de Python (banc de test)
+__pycache__/
