@@ -55,6 +55,23 @@
 /* GetIdleTaskMemory prototype (linked to static allocation support) */
 void vApplicationGetIdleTaskMemory( StaticTask_t **ppxIdleTaskTCBBuffer, StackType_t **ppxIdleTaskStackBuffer, uint32_t *pulIdleTaskStackSize );
 
+/* Hook prototypes */
+void vApplicationStackOverflowHook(xTaskHandle xTask, signed char *pcTaskName);
+
+/* USER CODE BEGIN 4 */
+void vApplicationStackOverflowHook(xTaskHandle xTask, signed char *pcTaskName)
+{
+  /* Une tache a deborde de sa pile (R4) : tout arreter tout de suite. Au debogueur, pcTaskName
+     donne le nom de la tache fautive, au lieu d'un plantage aleatoire bien plus tard. */
+  (void)xTask;
+  (void)pcTaskName;
+  taskDISABLE_INTERRUPTS();
+  for (;;)
+  {
+  }
+}
+/* USER CODE END 4 */
+
 /* USER CODE BEGIN GET_IDLE_TASK_MEMORY */
 static StaticTask_t xIdleTaskTCBBuffer;
 static StackType_t xIdleStack[configMINIMAL_STACK_SIZE];
