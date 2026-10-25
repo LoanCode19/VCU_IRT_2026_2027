@@ -2,7 +2,7 @@
 #define PROJECT_CONFIG_H
 
 // Project-specific configuration parameters
-#define MAX_TASKS 1
+#define MAX_TASKS TASK_COUNT // une case par tache de TaskId (structs.h)
 
 #define WDG_TIMEOUT pdMS_TO_TICKS(1000)
 #define MAIN_TIMOUT pdMS_TO_TICKS(100)

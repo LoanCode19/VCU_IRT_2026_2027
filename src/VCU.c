@@ -93,10 +93,10 @@ void MainApp(void)
 #ifdef USE_WDG
 void wdgRegisterTasks()
 {
-    /*wdgRegister(TaskMainId, MAIN_WDG_TIMEOUT, wdgTimeoutTable);
+    wdgRegister(TaskMainId, MAIN_WDG_TIMEOUT, wdgTimeoutTable);
     wdgRegister(TaskTRVPId, TRVP_WDG_TIMEOUT, wdgTimeoutTable);
     wdgRegister(TaskIHMId, IHM_WDG_TIMEOUT, wdgTimeoutTable);
-    wdgRegister(TaskCanTxId, CAN_TX_WDG_TIMEOUT, wdgTimeoutTable);*/
+    wdgRegister(TaskCanTxId, CAN_TX_WDG_TIMEOUT, wdgTimeoutTable);
     wdgRegister(TaskCanRxId, CAN_RX_WDG_TIMEOUT, wdgTimeoutTable);
 }
 #endif
