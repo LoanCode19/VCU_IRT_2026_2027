@@ -39,13 +39,14 @@ void MainApp(void)
     initThrottleValues();
     // GetUserThrottleCommand();
 
-    MainParams_t mainTaskParam = {&xMainQueue, &xTRVPQueue, &xIHMQueue, &xCanTxQueue, &xWDGQueue, TaskMainId};
-    CanRxParams_t canRxParams = {&xMainQueue, &xTRVPQueue, &xCanRxQueue, &xWDGQueue, TaskCanRxId};
-    CanTxParam_t canTxParams = {&xCanTxQueue, &xWDGQueue, TaskCanTxId};
-    TRVPParams_t TRVPParams = {&xTRVPQueue, &xMainQueue, &xWDGQueue, TaskTRVPId};
-    TaskIHMParam_t ihmParams = {&xIHMQueue, &xDSQueue, &xWDGQueue, TaskIHMId};
+    // static : les taches utilisent ces parametres bien apres la fin de MainApp()
+    static MainParams_t mainTaskParam = {&xMainQueue, &xTRVPQueue, &xIHMQueue, &xCanTxQueue, &xWDGQueue, TaskMainId};
+    static CanRxParams_t canRxParams = {&xMainQueue, &xTRVPQueue, &xCanRxQueue, &xWDGQueue, TaskCanRxId};
+    static CanTxParam_t canTxParams = {&xCanTxQueue, &xWDGQueue, TaskCanTxId};
+    static TRVPParams_t TRVPParams = {&xTRVPQueue, &xMainQueue, &xWDGQueue, TaskTRVPId};
+    static TaskIHMParam_t ihmParams = {&xIHMQueue, &xDSQueue, &xWDGQueue, TaskIHMId};
 #ifdef USE_WDG
-    WdgParams_t wdgParams = {&xWDGQueue};
+    static WdgParams_t wdgParams = {&xWDGQueue};
 #endif
     xTaskCreate(
         TaskCanRx,
