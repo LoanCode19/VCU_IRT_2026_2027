@@ -585,14 +585,9 @@ int _write(int file, char *ptr, int len)
 void StartDefaultTask(void const * argument)
 {
   /* USER CODE BEGIN 5 */
-  TickType_t lastWakeUp = xTaskGetTickCount();
-
-  /* Infinite loop */
-  for (;;)
-  {
-    printf("DEFAULT TASK\r\n");
-    vTaskDelayUntil(&lastWakeUp, pdMS_TO_TICKS(150));
-  }
+  /* Tache imposee par CubeMX, impossible a supprimer : elle se termine tout de suite et rend
+     sa memoire au tas. Les taches du VCU sont creees par MainApp(). */
+  vTaskDelete(NULL);
   /* USER CODE END 5 */
 }
 
