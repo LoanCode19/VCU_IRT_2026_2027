@@ -147,6 +147,7 @@ int calculateSpeed(dataMessage_t wheelSpeeds[4], int wheelCount)
         speed = (selectedValues[1] + selectedValues[2]) >> 1;
         break;
     case 3:
+    {
         int d01 = ABS(selectedValues[0] - selectedValues[1]);
         int d12 = ABS(selectedValues[1] - selectedValues[2]);
         int d02 = ABS(selectedValues[0] - selectedValues[2]);
@@ -169,6 +170,7 @@ int calculateSpeed(dataMessage_t wheelSpeeds[4], int wheelCount)
         }
 
         break;
+    }
     case 2:
         if (ABS(selectedValues[0] - selectedValues[1]) > MAX_DIFF_WHEELS) // If the two values are too different, we consider them unreliable
         {
