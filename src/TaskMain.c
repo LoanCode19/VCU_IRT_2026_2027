@@ -15,6 +15,9 @@
 
 void PrintMainState(const MainState_t *mainState);
 
+// Consignes perdues parce que la queue de CanTx etait pleine (lisible au debogueur)
+static uint32_t canTxSendFailures = 0;
+
 void TaskMain(void *pvParameters)
 {
     MainState_t mainState = {0};
@@ -77,7 +80,10 @@ void TaskMain(void *pvParameters)
 
             };
 
-            xQueueSend(*xCanTxQueue, &throttleMsg, portMAX_DELAY);
+            if (xQueueSend(*xCanTxQueue, &throttleMsg, 0) != pdPASS)
+            {
+                canTxSendFailures++; // queue pleine : consigne perdue, mais Main continue (R3)
+            }
             console_print("Calculated throttle command: %f\n", throttle);
         }
 
