@@ -18,7 +18,7 @@
 #include "test_app.h"
 #include "vcu_test.h"
 
-#define WDG_PERIOD_MS ((TickType_t)WDG_TIMEOUT) // periode de TaskWDG (project_config.h)
+#define WDG_PERIOD_MS ((TickType_t)WDG_PERIOD) // periode de TaskWDG (project_config.h)
 
 static unsigned sRefreshCount = 0;
 static unsigned sLateRefreshCount = 0; // rafraichissements a partir de sLateFrom

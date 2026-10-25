@@ -38,7 +38,7 @@ void TaskWDG(void *pvParameters)
 
     while (1)
     {
-        vTaskDelayUntil(&timeNow, WDG_TIMEOUT);
+        vTaskDelayUntil(&timeNow, WDG_PERIOD);
         console_print("------(B)WDG------\n");
 
         WdgMessage_t wdgMsg = {0, 0};
