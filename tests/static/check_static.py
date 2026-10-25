@@ -256,6 +256,20 @@ def check_board():
     check("R4a", "-", bool(m) and int(m.group(1)) > 0,
           "configCHECK_FOR_STACK_OVERFLOW " + (m.group(1) if m else "non defini") + " sur la carte (attendu 2)")
 
+    # W2 (carte) : le vrai watchdog IWDG est actif, rafraichi par TaskWDG, et fige au debogueur
+    missing = []
+    if "IWDG" not in [v for k, v in ioc.items() if re.fullmatch(r"Mcu\.IP\d+", k)]:
+        missing.append("IWDG active dans le .ioc")
+    if not re.search(r"void\s+refreshIWDG\s*\(\s*void\s*\)\s*\{[^}]*HAL_IWDG_Refresh", main_c):
+        missing.append("refreshIWDG() dans main.c")
+    if "__HAL_DBGMCU_FREEZE_IWDG" not in main_c:
+        missing.append("IWDG fige au debogueur")
+    for name in ("Debug", "Release"):
+        if 'value="USE_WDG"' not in configs.get(name, ""):
+            missing.append(f"USE_WDG en {name}")
+    check("W2b", "-", not missing,
+          "IWDG de la carte actif et rafraichi : " + ("oui" if not missing else "manque " + ", ".join(missing)))
+
 
 def main():
     print("\n=== Statique ===")
