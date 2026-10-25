@@ -8,8 +8,10 @@
 #define MAIN_TIMOUT pdMS_TO_TICKS(100)
 #define TRVP_TIMEOUT pdMS_TO_TICKS(100)
 #define IHM_TIMEOUT pdMS_TO_TICKS(100)
-#define CAN_RX_TIMEOUT portMAX_DELAY
-#define CAN_TX_TIMEOUT portMAX_DELAY
+// Attente maximale de CanRx et CanTx : elles nourrissent le watchdog au moins a ce rythme,
+// meme sans trafic. La perte du bus est geree par les timeouts des donnees, pas par le watchdog.
+#define CAN_RX_TIMEOUT pdMS_TO_TICKS(100)
+#define CAN_TX_TIMEOUT pdMS_TO_TICKS(100)
 
 #define MAIN_WDG_TIMEOUT pdMS_TO_TICKS(500)
 #define TRVP_WDG_TIMEOUT pdMS_TO_TICKS(500)
