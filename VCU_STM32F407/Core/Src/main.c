@@ -77,28 +77,8 @@ void StartDefaultTask(void const * argument);
 
 uint8_t ubKeyNumber = 0x0;
 // CAN_HandleTypeDef hcan1;
-CAN_TxHeaderTypeDef TxHeader;
 CAN_RxHeaderTypeDef RxHeader;
-uint8_t TxData[8];
 uint8_t RxData[8];
-uint32_t TxMailbox;
-
-void TaskSendTXMessages(void *pvParameters)
-{
-  TxData[0] = 0x3;
-  TxData[1] = 0xAD;
-  while (1)
-  {
-    /* Start the Transmission process */
-    if (HAL_CAN_AddTxMessage(&hcan1, &TxHeader, TxData, &TxMailbox) != HAL_OK)
-    {
-      /* Transmission request Error */
-      Error_Handler();
-    }
-    printf("Message sent\n");
-    vTaskDelay(500);
-  }
-}
 
 /* USER CODE END 0 */
 
@@ -162,14 +142,6 @@ int main(void)
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
-  xTaskCreate(
-      TaskSendTXMessages,
-      "CAN_TX",
-      configMINIMAL_STACK_SIZE,
-      NULL,
-      2U,
-      NULL);
-
   MainApp();
 
   /* USER CODE END RTOS_THREADS */
@@ -312,14 +284,6 @@ static void MX_CAN1_Init(void)
     /* Notification Error */
     Error_Handler();
   }
-
-  /*##-5- Configure Transmission process #####################################*/
-  TxHeader.StdId = 0x321;
-  TxHeader.ExtId = 0x01;
-  TxHeader.RTR = CAN_RTR_DATA;
-  TxHeader.IDE = CAN_ID_STD;
-  TxHeader.DLC = 2;
-  TxHeader.TransmitGlobalTime = DISABLE;
 
   /* USER CODE END CAN1_Init 2 */
 
