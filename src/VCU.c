@@ -25,6 +25,8 @@
 #include "CanISREmulator.h"
 #endif
 
+// Cree les queues et les taches du VCU. Le scheduler est demarre ensuite par l'appelant
+// (osKernelStart() dans main.c sur la carte).
 void MainApp(void)
 {
 
@@ -110,12 +112,6 @@ void MainApp(void)
     wdgRegisterTasks();
 
 #endif
-
-    vTaskStartScheduler();
-
-    for (;;)
-    {
-    }
 }
 
 #ifdef USE_WDG
