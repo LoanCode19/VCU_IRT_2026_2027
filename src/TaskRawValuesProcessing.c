@@ -78,14 +78,14 @@ void TaskRawValuesProcessing(void *pvParameters)
                 break;
             }
 
-            console_print("trvp:Received from queue: id=%lu, timestamp=%lu\n", msg.id, msg.timestamp);
+            console_print("trvp:Received from queue: id=%d, timestamp=%lu\n", msg.id, (unsigned long)msg.timestamp);
         }
 
         updateDataTimeStatus(trvpState.wheelSpeeds, WHEEL_COUNT, MAX_WHEEL_TIMEOUT, xTaskGetTickCount()); // if you need the actual time, call the function directly here!!!
         updateDataTimeStatus(trvpState.appsValues, APPS_COUNT, MAX_APPS_TIMEOUT, xTaskGetTickCount());
 
         trvpState.speed = calculateSpeed(trvpState.wheelSpeeds, WHEEL_COUNT);
-        console_print("trvp:Calculated speed: %.2f\n", trvpState.speed);
+        console_print("trvp:Calculated speed: %lu\n", (unsigned long)trvpState.speed);
 
         // MUST give APPS values in the order defined int potmin and potMax in throttle parameters!!!
         float throttleCommand = GetUserThrottleCommand(&trvpState.appsValues[0], &trvpState.appsValues[1], trvpState.speed, trvpState.brakePedalPressed);
@@ -121,13 +121,13 @@ void printTRVPState(const TRVPState_t *state)
 {
     console_print("TRVP State:\n");
     console_print("  Brake Pedal Pressed: %s\n", state->brakePedalPressed ? "Yes" : "No");
-    console_print("  Speed: %d\n", state->speed);
+    console_print("  Speed: %lu\n", (unsigned long)state->speed);
     for (int i = 0; i < WHEEL_COUNT; i++)
     {
-        console_print("  Wheel %d Speed: %d, Time Status: %d\n", i, state->wheelSpeeds[i].data, state->wheelSpeeds[i].timeStatus);
+        console_print("  Wheel %d Speed: %ld, Time Status: %d\n", i, (long)state->wheelSpeeds[i].data, state->wheelSpeeds[i].timeStatus);
     }
     for (int i = 0; i < APPS_COUNT; i++)
     {
-        console_print("  APPS %d Value: %d, Time Status: %d\n", i, state->appsValues[i].data, state->appsValues[i].timeStatus);
+        console_print("  APPS %d Value: %ld, Time Status: %d\n", i, (long)state->appsValues[i].data, state->appsValues[i].timeStatus);
     }
 }

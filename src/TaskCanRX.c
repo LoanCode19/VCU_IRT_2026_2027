@@ -100,7 +100,7 @@ void TaskCanRx(void *pvParameters)
             default:
                 break;
             }
-            console_print("sent appMsg id:%d data:%d\n", appMsg.id, appMsg.data);
+            console_print("sent appMsg id:%d data:%ld\n", appMsg.id, (long)appMsg.data);
         }
 
         // console_print((ledState = !ledState) ? "Led ON\n" : "Led OFF\n");

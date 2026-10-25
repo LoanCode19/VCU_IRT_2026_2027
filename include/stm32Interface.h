@@ -1,1 +1,1 @@
-extern void refreshIWDG();
+void refreshIWDG(void);

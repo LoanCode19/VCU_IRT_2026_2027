@@ -69,7 +69,7 @@ void TaskWDG(void *pvParameters)
 #ifdef LINUX
             console_print("one task has timed out\n");
 #else
-            refreshIWDG()
+            refreshIWDG();
 
 #endif
         }
@@ -82,7 +82,6 @@ bool checkTasksTimeout(const WdgMessage_t taskMsg[MAX_TASKS])
     TickType_t timeNow = xTaskGetTickCount();
     for (int i = 0; i < MAX_TASKS; i++)
     {
-        printf("Task %d last fed at %lu ticks, now: %lu\n", i, taskMsg[i].timestamp, timeNow);
         if (taskMsg[i].taskId == -1) // task never fed the watchdog
         {
             if (timeNow > wdgTimeoutTable[i])

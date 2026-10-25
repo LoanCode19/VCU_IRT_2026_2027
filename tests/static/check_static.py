@@ -21,7 +21,6 @@ ROOT = Path(__file__).resolve().parents[2]
 SRC = ROOT / "src"
 INCLUDE = ROOT / "include"
 HOST_INCLUDE = ROOT / "tests" / "host" / "include"
-HOST_COMPAT = ROOT / "tests" / "host" / "compat"
 BOARD = ROOT / "VCU_STM32F407"
 
 counts = {"PASS": 0, "FAIL": 0, "BLOQUE": 0}
@@ -49,18 +48,7 @@ def compile_diagnostics(cc, source, flags):
 
 
 def host_flags():
-    flags = ["-std=gnu11", f"-I{HOST_INCLUDE}"]
-    if not compiler_has_header(ARGS.cc, "pthread.h"):
-        flags.append(f"-I{HOST_COMPAT}")
-    flags.append(f"-I{INCLUDE}")
-    return flags
-
-
-def compiler_has_header(cc, header):
-    with tempfile.TemporaryDirectory() as tmp:
-        probe = Path(tmp) / "probe.c"
-        probe.write_text(f"#include <{header}>\nint main(void) {{ return 0; }}\n")
-        return subprocess.run([cc, "-fsyntax-only", str(probe)], capture_output=True).returncode == 0
+    return ["-std=gnu11", f"-I{HOST_INCLUDE}", f"-I{INCLUDE}"]
 
 
 def app_sources():
@@ -88,7 +76,7 @@ def format_errors(cc, flags):
         total = 0
         files = []
         for src in app_sources():
-            extra = ["-DUSE_WDG", "-DrefreshIWDG()=test_refreshIWDG();"] if src.name == "TaskWDG.c" else []
+            extra = ["-DUSE_WDG", "-DrefreshIWDG=test_refreshIWDG"] if src.name == "TaskWDG.c" else []
             _, diag = compile_diagnostics(cc, src, flags + extra + ["-include", str(fmt), "-Wformat=2"])
             n = sum(1 for l in diag.splitlines() if "-Wformat" in l)
             if n:

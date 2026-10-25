@@ -2,9 +2,9 @@
 // Code teste : TaskWDG (src/TaskWDG.c) et l'alimentation du watchdog par TaskCanRx
 // Problemes : W1, W3, W4 de AUDIT_VCU.md (W2 est verifie par le test statique)
 //
-// Compile avec -DUSE_WDG et -D"refreshIWDG()=test_refreshIWDG();" : la macro ajoute le ';'
-// qui manque dans TaskWDG.c (W2) uniquement pour pouvoir tester la logique, et compte les
-// rafraichissements de l'IWDG. Sans LINUX, c'est bien la branche de la carte qui est testee.
+// Compile avec -DUSE_WDG et -DrefreshIWDG=test_refreshIWDG : ce renommage remplace le
+// rafraichissement de l'IWDG de la carte par une fonction de test qui compte les appels.
+// Sans LINUX, c'est bien la branche de la carte qui est testee.
 
 #include <stdbool.h>
 #include <string.h>

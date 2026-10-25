@@ -1,6 +1,5 @@
 
 #include <stdio.h>
-#include <pthread.h>
 #include <stdbool.h>
 
 #include "FreeRTOS.h"
