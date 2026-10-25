@@ -31,6 +31,16 @@ typedef enum canIds
 
 } CanIds;
 
+// Le refroidissement recoit aussi les temperatures. Pointeur NULL : pas de refroidissement
+// (tests qui remplissent CanRxParams_t sans ce champ).
+static void SendToCooling(QueueHandle_t *xCoolingQueue, const dataMessage_t *msg)
+{
+    if ((xCoolingQueue != NULL) && (*xCoolingQueue != NULL))
+    {
+        xQueueSend(*xCoolingQueue, msg, pdMS_TO_TICKS(5));
+    }
+}
+
 void TaskCanRx(void *pvParameters)
 {
     CanRxParams_t *params = (CanRxParams_t *)pvParameters;
@@ -38,6 +48,7 @@ void TaskCanRx(void *pvParameters)
     QueueHandle_t *xTRVPQueue = params->xTRVPQueue;
     QueueHandle_t *xCanRxQueue = params->xCanRxQueue;
     QueueHandle_t *xWDGQueue = params->xWDGQueue;
+    QueueHandle_t *xCoolingQueue = params->xCoolingQueue;
     TaskId taskId = params->taskId;
 
     TickType_t timeNow = xTaskGetTickCount();
@@ -55,6 +66,7 @@ void TaskCanRx(void *pvParameters)
         while ((xQueueReceive(*xCanRxQueue, &canMsg, pdMS_TO_TICKS(0))) == pdPASS)
         {
             appMsg.data = canMsg.data;
+            appMsg.timestamp = xTaskGetTickCount();
 
             switch ((CanIds)canMsg.id)
             {
@@ -88,10 +100,12 @@ void TaskCanRx(void *pvParameters)
             case CAN_motor_tempId:
                 appMsg.id = motor_tempId;
                 xQueueSend(*xMainQueue, &appMsg, pdMS_TO_TICKS(5));
+                SendToCooling(xCoolingQueue, &appMsg);
                 break;
             case CAN_inverter_tempId:
                 appMsg.id = inverter_tempId;
                 xQueueSend(*xMainQueue, &appMsg, pdMS_TO_TICKS(5));
+                SendToCooling(xCoolingQueue, &appMsg);
                 break;
             case CAN_voltageId:
                 appMsg.id = voltageId;
@@ -104,7 +118,6 @@ void TaskCanRx(void *pvParameters)
         }
 
         // console_print((ledState = !ledState) ? "Led ON\n" : "Led OFF\n");
-        appMsg.timestamp = xTaskGetTickCount();
 
 #ifdef USE_WDG
         // feed WDG

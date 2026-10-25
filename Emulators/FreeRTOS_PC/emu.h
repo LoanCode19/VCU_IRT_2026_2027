@@ -51,6 +51,13 @@ uint32_t EmuCan_DroppedFrames(void);
 void EmuCan_Init(void);
 
 // ----------------------------------------------------------------------------------------------
+// Espion des queues (emu_trace.c)
+//
+// Nombre de dataMessage_t d'identifiant messageId deposes dans queue par les taches (xQueueSend)
+// depuis le demarrage. La tache qui lit la queue n'y change rien : on observe l'envoi, pas le stock.
+uint32_t EmuTrace_SentCount(QueueHandle_t queue, int messageId);
+
+// ----------------------------------------------------------------------------------------------
 // Outils de test
 
 static inline void EmuWaitMs(uint32_t ms)

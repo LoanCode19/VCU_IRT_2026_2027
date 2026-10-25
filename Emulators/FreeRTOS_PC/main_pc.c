@@ -10,8 +10,9 @@
 
 // Point d'entree de l'emulateur PC : remplace main() de VCU_STM32F407/Core/Src/main.c.
 //
-// Comme sur la carte, MainApp() cree les queues et les taches du VCU puis demarre le scheduler.
-// Avant, on cree la tache du bus CAN simule et la tache qui execute le test (EmuTest_Run).
+// Comme sur la carte, MainApp() cree les queues et les taches du VCU, puis le scheduler demarre
+// (osKernelStart() dans main.c sur la carte). Avant, on cree la tache du bus CAN simule et la
+// tache qui execute le test (EmuTest_Run).
 
 #define EMU_TEST_STACK_DEPTH 1024U
 
@@ -43,7 +44,8 @@ int main(void)
     (void)xTaskCreateStatic(EmuTestTask, "EMU_TEST", EMU_TEST_STACK_DEPTH, NULL,
                             configMAX_PRIORITIES - 2, sTestTaskStack, &sTestTaskTcb);
 
-    MainApp(); // ne rend jamais la main
+    MainApp();
+    vTaskStartScheduler(); // ne rend jamais la main
     return 0;
 }
 

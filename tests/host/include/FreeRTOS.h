@@ -19,4 +19,12 @@ typedef uint32_t TickType_t;
 // Valeur de la carte (VCU_STM32F407/Core/Inc/FreeRTOSConfig.h), utilisee par MainApp()
 #define configMINIMAL_STACK_SIZE ((uint16_t)128)
 
+// Sur la carte, configASSERT bloque le processeur. Ici : message et arret du test (freertos_stubs.c).
+void vTestAssertFailed(const char *file, int line);
+#define configASSERT(x)                        \
+    if ((x) == 0)                              \
+    {                                          \
+        vTestAssertFailed(__FILE__, __LINE__); \
+    }
+
 #endif // TEST_HOST_FREERTOS_H

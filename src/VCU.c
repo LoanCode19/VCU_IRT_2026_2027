@@ -20,101 +20,74 @@
 #include "TaskCanTx.h"
 #include "TaskRawValuesProcessing.h"
 #include "TaskWDG.h"
+#include "TaskDigitalSignals.h"
+#include "TaskCoolingSystem.h"
 
 #ifdef TEST_ISR
 #include "CanISREmulator.h"
 #endif
 
+// Cree une tache, et bloque si la creation echoue (tas FreeRTOS trop petit)
+static void CreateTask(TaskFunction_t task, const char *name, uint16_t stackWords,
+                       void *params, UBaseType_t priority)
+{
+    BaseType_t created = xTaskCreate(task, name, stackWords, params, priority, NULL);
+    configASSERT(created == pdPASS);
+}
+
+// Cree les queues et les taches du VCU. Le scheduler est demarre ensuite par l'appelant
+// (osKernelStart() dans main.c sur la carte).
 void MainApp(void)
 {
 
     xMainQueue = xQueueCreate(10, sizeof(dataMessage_t));
+    configASSERT(xMainQueue != NULL);
     xTRVPQueue = xQueueCreate(10, sizeof(dataMessage_t));
+    configASSERT(xTRVPQueue != NULL);
     xIHMQueue = xQueueCreate(10, sizeof(IHMOrder_t));
+    configASSERT(xIHMQueue != NULL);
     xCanTxQueue = xQueueCreate(10, sizeof(dataMessage_t));
+    configASSERT(xCanTxQueue != NULL);
     xCanRxQueue = xQueueCreate(10, sizeof(dataCan));
+    configASSERT(xCanRxQueue != NULL);
     xWDGQueue = xQueueCreate(10, sizeof(WdgMessage_t));
+    configASSERT(xWDGQueue != NULL);
     xDSQueue = xQueueCreate(10, sizeof(DigitalOrder_t));
+    configASSERT(xDSQueue != NULL);
+    xCoolingQueue = xQueueCreate(10, sizeof(dataMessage_t));
+    configASSERT(xCoolingQueue != NULL);
 
     initThrottleValues();
     // GetUserThrottleCommand();
 
-    MainParams_t mainTaskParam = {&xMainQueue, &xTRVPQueue, &xIHMQueue, &xCanTxQueue, &xWDGQueue, TaskMainId};
-    CanRxParams_t canRxParams = {&xMainQueue, &xTRVPQueue, &xCanRxQueue, &xWDGQueue, TaskCanRxId};
-    CanTxParam_t canTxParams = {&xCanTxQueue, &xWDGQueue, TaskCanTxId};
-    TRVPParams_t TRVPParams = {&xTRVPQueue, &xMainQueue, &xWDGQueue, TaskTRVPId};
-    TaskIHMParam_t ihmParams = {&xIHMQueue, &xDSQueue, &xWDGQueue, TaskIHMId};
+    // static : les taches utilisent ces parametres bien apres la fin de MainApp()
+    static MainParams_t mainTaskParam = {&xMainQueue, &xTRVPQueue, &xIHMQueue, &xCanTxQueue, &xWDGQueue, TaskMainId};
+    static CanRxParams_t canRxParams = {&xMainQueue, &xTRVPQueue, &xCanRxQueue, &xWDGQueue, TaskCanRxId, &xCoolingQueue};
+    static CanTxParam_t canTxParams = {&xCanTxQueue, &xWDGQueue, TaskCanTxId};
+    static TRVPParams_t TRVPParams = {&xTRVPQueue, &xMainQueue, &xWDGQueue, TaskTRVPId};
+    static TaskIHMParam_t ihmParams = {&xIHMQueue, &xDSQueue, &xWDGQueue, TaskIHMId};
 #ifdef USE_WDG
-    WdgParams_t wdgParams = {&xWDGQueue};
+    static WdgParams_t wdgParams = {&xWDGQueue};
 #endif
-    xTaskCreate(
-        TaskCanRx,
-        "CAN_RX",
-        configMINIMAL_STACK_SIZE,
-        &canRxParams,
-        2U,
-        NULL);
 
-    /*xTaskCreate(
-        TaskMain,
-        "MAIN",
-        configMINIMAL_STACK_SIZE,
-        &mainTaskParam,
-        2U,
-        NULL);
-
-    xTaskCreate(
-        TaskCanTx,
-        "CAN_TX",
-        configMINIMAL_STACK_SIZE,
-        &canTxParams,
-        tskIDLE_PRIORITY,
-        NULL);
-
-    xTaskCreate(
-        TaskRawValuesProcessing,
-        "TRVP",
-        configMINIMAL_STACK_SIZE,
-        &TRVPParams,
-        2U,
-        NULL);
-
-    xTaskCreate(
-        TaskIHM,
-        "IHM",
-        configMINIMAL_STACK_SIZE,
-        &ihmParams,
-        tskIDLE_PRIORITY,
-        NULL);*/
+    // Priorite : plus le nombre est grand, plus la tache est prioritaire. Pile en mots de 4 octets.
+    CreateTask(TaskCanRx, "CAN_RX", 256, &canRxParams, 6);
+    CreateTask(TaskMain, "MAIN", 512, &mainTaskParam, 5);
+    CreateTask(TaskCanTx, "CAN_TX", 512, &canTxParams, 5);
+    CreateTask(TaskRawValuesProcessing, "TRVP", 512, &TRVPParams, 4);
+    CreateTask(TaskDigitalSignals, "DIGITAL", 256, &xDSQueue, 3);
+    CreateTask(TaskCoolingSystem, "COOLING", 256, &xCoolingQueue, 2);
+    CreateTask(TaskIHM, "IHM", 256, &ihmParams, 2);
 
 #ifdef TEST_ISR
-    xTaskCreate(
-        CanISREmulator,
-        "CanRxIsr",
-        configMINIMAL_STACK_SIZE,
-        NULL,
-        tskIDLE_PRIORITY,
-        NULL);
-
+    CreateTask(CanISREmulator, "CanRxIsr", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY);
 #endif
 #ifdef USE_WDG
-    xTaskCreate(
-        TaskWDG,
-        "WDG",
-        configMINIMAL_STACK_SIZE,
-        &wdgParams,
-        tskIDLE_PRIORITY,
-        NULL);
+    CreateTask(TaskWDG, "WDG", 256, &wdgParams, 1);
 
     wdgRegisterTasks();
 
 #endif
-
-    vTaskStartScheduler();
-
-    for (;;)
-    {
-    }
 }
 
 #ifdef USE_WDG

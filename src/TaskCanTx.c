@@ -35,7 +35,7 @@ void TaskCanTx(void *pvParameters)
 
             switch (msg.id)
             {
-            case 0x50:
+            case inverterTorqueCmdId:
             {
                 float throttle = FP_TOFLOAT(msg.data);
                 console_print("sending Throttle Order = %f to inverter\n", throttle);

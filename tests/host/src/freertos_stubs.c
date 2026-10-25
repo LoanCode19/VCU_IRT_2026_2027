@@ -1,3 +1,4 @@
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <setjmp.h>
@@ -311,6 +312,12 @@ void updateDataTimeStatus(dataMessage_t *dataMsg, int count, int maxDiff, TickTy
     }
 }
 #endif
+
+void vTestAssertFailed(const char *file, int line)
+{
+    printf("ASSERT : %s:%d\n", file, line);
+    exit(3);
+}
 
 void vTaskDelete(void *taskToDelete)
 {
