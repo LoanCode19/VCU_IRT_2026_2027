@@ -79,6 +79,9 @@ void StartDefaultTask(void const * argument);
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 
+// 1 si le dernier redemarrage vient du watchdog IWDG (lu au demarrage, visible au debogueur)
+volatile uint8_t lastResetByIwdg = 0;
+
 uint8_t ubKeyNumber = 0x0;
 // CAN_HandleTypeDef hcan1;
 CAN_RxHeaderTypeDef RxHeader;
@@ -103,7 +106,9 @@ int main(void)
   HAL_Init();
 
   /* USER CODE BEGIN Init */
-
+  // Cause du dernier redemarrage : la lire avant tout, puis effacer les drapeaux pour le prochain
+  lastResetByIwdg = (__HAL_RCC_GET_FLAG(RCC_FLAG_IWDGRST) != RESET) ? 1U : 0U;
+  __HAL_RCC_CLEAR_RESET_FLAGS();
   /* USER CODE END Init */
 
   /* Configure the system clock */
@@ -123,7 +128,10 @@ int main(void)
   MX_CAN1_Init();
   MX_IWDG_Init();
   /* USER CODE BEGIN 2 */
-
+  if (lastResetByIwdg)
+  {
+    printf("Redemarrage par le watchdog (IWDG) : une tache ne repondait plus\n");
+  }
   /* USER CODE END 2 */
 
   /* USER CODE BEGIN RTOS_MUTEX */
