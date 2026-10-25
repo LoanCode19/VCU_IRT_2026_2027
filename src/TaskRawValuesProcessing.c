@@ -92,7 +92,7 @@ void TaskRawValuesProcessing(void *pvParameters)
         console_print("trvp:Calculated throttle command: %.2f\n", throttleCommand);
 
         dataMessage_t throttleMsg = {
-            .id = throttleCmdId,
+            .id = processedThrottleId,
             .data = FP_FROMFLT(throttleCommand), // convert to percentage and send as int
             .timestamp = xTaskGetTickCount()};
 

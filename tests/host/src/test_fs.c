@@ -178,7 +178,7 @@ static void Test_T11_9(void)
     float pedal = -1.0f;
     while (xQueueReceive(xMainQueue, &out, 0) == pdPASS)
     {
-        if (out.id == throttleCmdId || out.id == processedThrottleId)
+        if (out.id == processedThrottleId)
         {
             pedal = FP_TOFLOAT(out.data);
         }

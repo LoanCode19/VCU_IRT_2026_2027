@@ -43,7 +43,7 @@ typedef enum messageIds
     calculatedSpeedId,
     processedThrottleId,
 
-    throttleCmdId,
+    inverterTorqueCmdId,
 
     hbledId,
     faultLightId,

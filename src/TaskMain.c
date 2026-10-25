@@ -71,7 +71,7 @@ void TaskMain(void *pvParameters)
         {
             float throttle = ProcessThrottle(FP_TOFLOAT(mainState.ThrottleCommand.data), mainState.speed.data, mainState.motorTemp.data, mainState.inverterTemp.data, mainState.Voltage.data);
             dataMessage_t throttleMsg = {
-                .id = 0x50,                   // Throttle command message ID
+                .id = inverterTorqueCmdId,    // Throttle command message ID
                 .data = FP_FROMFLT(throttle), // Convert to percentage and scale
                 .timestamp = xTaskGetTickCount()
 
