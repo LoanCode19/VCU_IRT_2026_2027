@@ -52,14 +52,14 @@ void TaskWDG(void *pvParameters)
                 taskStates[wdgMsg.taskId].lastFeed = wdgMsg.timestamp;
             }
         }
-        if (!checkTasksTimeout(taskStates))
+        if (checkTasksTimeout(taskStates))
         {
-#ifdef LINUX
-            console_print("one task has timed out\n");
-#else
-            refreshIWDG();
-
-#endif
+            refreshIWDG(); // toutes les taches sont a l'heure
+        }
+        else
+        {
+            // Une tache est en retard : plus de rafraichissement, l'IWDG va redemarrer la carte
+            console_print("WDG: tache en retard\n");
         }
         console_print("------(E)WDG------\n\n");
     }
