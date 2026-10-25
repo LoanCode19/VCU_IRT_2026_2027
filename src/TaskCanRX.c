@@ -55,6 +55,7 @@ void TaskCanRx(void *pvParameters)
         while ((xQueueReceive(*xCanRxQueue, &canMsg, pdMS_TO_TICKS(0))) == pdPASS)
         {
             appMsg.data = canMsg.data;
+            appMsg.timestamp = xTaskGetTickCount();
 
             switch ((CanIds)canMsg.id)
             {
@@ -104,7 +105,6 @@ void TaskCanRx(void *pvParameters)
         }
 
         // console_print((ledState = !ledState) ? "Led ON\n" : "Led OFF\n");
-        appMsg.timestamp = xTaskGetTickCount();
 
 #ifdef USE_WDG
         // feed WDG
