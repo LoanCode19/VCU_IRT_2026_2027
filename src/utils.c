@@ -135,7 +135,7 @@ int calculateSpeed(dataMessage_t wheelSpeeds[4], int wheelCount)
         {
             continue; // Skip this wheel if its data is not OK
         }
-        selectedValues[validCount] = wheelSpeeds[validCount].data;
+        selectedValues[validCount] = wheelSpeeds[i].data;
         ++validCount;
     }
 
