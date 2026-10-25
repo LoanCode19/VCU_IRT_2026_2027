@@ -37,7 +37,7 @@
 
     void console_init( void );
     void console_print( const char * fmt,
-                        ... );
+                        ... ) __attribute__( ( format( printf, 1, 2 ) ) );
 
     #ifdef __cplusplus
         }

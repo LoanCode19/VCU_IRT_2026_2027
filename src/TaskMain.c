@@ -64,7 +64,7 @@ void TaskMain(void *pvParameters)
                 mainState.ThrottleCommand = msg;
                 break;
             }
-            console_print("Received from queue: id=%d, timestamp=%lu\n", msg.id, msg.timestamp);
+            console_print("Received from queue: id=%d, timestamp=%lu\n", msg.id, (unsigned long)msg.timestamp);
         }
 
         if (mainState.lastCallTimeStmp - xTaskGetTickCount() > pdMS_TO_TICKS(5))
@@ -100,10 +100,10 @@ void PrintMainState(const MainState_t *mainState)
     // add timestate to each print
 
     console_print("Main State:\n");
-    console_print("  Throttle Command: %lu state:%d\n ", mainState->ThrottleCommand.data, mainState->ThrottleCommand.timeStatus);
-    console_print("  Speed: %lu state:%d\n", mainState->speed.data, mainState->speed.timeStatus);
+    console_print("  Throttle Command: %ld state:%d\n ", (long)mainState->ThrottleCommand.data, mainState->ThrottleCommand.timeStatus);
+    console_print("  Speed: %ld state:%d\n", (long)mainState->speed.data, mainState->speed.timeStatus);
     console_print("  Brake Pedal Pressed: %s\n", mainState->brakePedalPressed ? "Yes" : "No");
-    console_print("  Motor Temp: %d state:%d\n", mainState->motorTemp.data, mainState->motorTemp.timeStatus);
-    console_print("  Inverter Temp: %d state:%d\n", mainState->inverterTemp.data, mainState->inverterTemp.timeStatus);
-    console_print("  Voltage: %d state:%d\n", mainState->Voltage.data, mainState->Voltage.timeStatus);
+    console_print("  Motor Temp: %ld state:%d\n", (long)mainState->motorTemp.data, mainState->motorTemp.timeStatus);
+    console_print("  Inverter Temp: %ld state:%d\n", (long)mainState->inverterTemp.data, mainState->inverterTemp.timeStatus);
+    console_print("  Voltage: %ld state:%d\n", (long)mainState->Voltage.data, mainState->Voltage.timeStatus);
 }
