@@ -32,7 +32,7 @@ from vcu_build import exe_name, prepare_app_sources, run  # noqa: E402
 KERNEL_SOURCES = [KERNEL / name for name in
                   ("tasks.c", "queue.c", "list.c", "timers.c", "event_groups.c", "stream_buffer.c")]
 KERNEL_SOURCES += [KERNEL / "portable" / "MemMang" / "heap_4.c", PORT / "port.c"]
-EMU_SOURCES = [EMU / "main_pc.c", EMU / "emu_can.c", EMU / "console_pc.c"]
+EMU_SOURCES = [EMU / "main_pc.c", EMU / "emu_can.c", EMU / "emu_trace.c", EMU / "console_pc.c"]
 
 RESULT_RE = re.compile(r"^\[(PASS|FAIL|BLOQUE)\s*\]|^ {9}\S")
 

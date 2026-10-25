@@ -41,6 +41,12 @@
 #define INCLUDE_xTaskGetSchedulerState 1
 #define INCLUDE_uxTaskGetStackHighWaterMark 0
 
+// Espion des queues (emu_trace.c) : chaque message depose par une tache (xQueueSend) est compte,
+// pour que les tests observent le VCU de l'exterieur. pvItemToQueue est le parametre de
+// xQueueGenericSend, seule fonction du noyau qui appelle traceQUEUE_SEND sans queue sets.
+void EmuTrace_QueueSend(const void *queue, const void *item, unsigned long itemSize);
+#define traceQUEUE_SEND(pxQueue) EmuTrace_QueueSend((pxQueue), pvItemToQueue, (pxQueue)->uxItemSize)
+
 // Assertion : message + arret du programme avec le code 3 (voir main_pc.c)
 void vAssertCalled(const char *file, unsigned long line);
 #define configASSERT(x)                        \
