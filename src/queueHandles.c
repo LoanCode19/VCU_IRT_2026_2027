@@ -11,3 +11,4 @@ QueueHandle_t xCanRxQueue;
 QueueHandle_t xWDGQueue;
 
 QueueHandle_t xDSQueue;
+QueueHandle_t xCoolingQueue;
