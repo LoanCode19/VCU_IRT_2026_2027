@@ -38,7 +38,7 @@ SECTORS = {
     "can_rx": ("test_can_rx.c", [], "Reception CAN (TaskCanRx)"),
     "chaine": ("test_chaine.c", [], "Chaine TRVP -> Main -> CanTx"),
     "demarrage": ("test_integration.c", [], "Demarrage (MainApp)"),
-    "watchdog": ("test_watchdog.c", ["USE_WDG", "refreshIWDG()=test_refreshIWDG();"], "Watchdog"),
+    "watchdog": ("test_watchdog.c", ["USE_WDG", "refreshIWDG=test_refreshIWDG"], "Watchdog"),
     "ihm": ("test_ihm.c", [], "IHM et sorties TOR"),
     "refroidissement": ("test_cooling_digital.c", [], "Refroidissement (test historique)"),
     "fs": ("test_fs.c", [], "Reglement FS 2026"),

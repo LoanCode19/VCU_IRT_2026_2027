@@ -69,7 +69,7 @@ void TaskWDG(void *pvParameters)
 #ifdef LINUX
             console_print("one task has timed out\n");
 #else
-            refreshIWDG()
+            refreshIWDG();
 
 #endif
         }

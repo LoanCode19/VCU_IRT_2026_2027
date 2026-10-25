@@ -88,7 +88,7 @@ def format_errors(cc, flags):
         total = 0
         files = []
         for src in app_sources():
-            extra = ["-DUSE_WDG", "-DrefreshIWDG()=test_refreshIWDG();"] if src.name == "TaskWDG.c" else []
+            extra = ["-DUSE_WDG", "-DrefreshIWDG=test_refreshIWDG"] if src.name == "TaskWDG.c" else []
             _, diag = compile_diagnostics(cc, src, flags + extra + ["-include", str(fmt), "-Wformat=2"])
             n = sum(1 for l in diag.splitlines() if "-Wformat" in l)
             if n:
