@@ -225,6 +225,32 @@ def check_board():
     check("C4a", "-", "CAN_MODE_LOOPBACK" not in main_c and "TaskSendTXMessages" not in main_c,
           "main.c : CAN en mode LOOPBACK et/ou tache de test TaskSendTXMessages encore presents")
 
+    # C5 : le code genere de main.c doit correspondre au .ioc, sinon la prochaine generation CubeMX
+    # ecrase sans prevenir les reglages faits a la main. Cle absente du .ioc : valeur par defaut de CubeMX.
+    ioc = dict(line.split("=", 1) for line in read(BOARD / "VCU_STM32F407.ioc").splitlines() if "=" in line)
+    can_fields = [("Prescaler", "Prescaler", "16"), ("TimeSeg1", "BS1", "CAN_BS1_1TQ"),
+                  ("TimeSeg2", "BS2", "CAN_BS2_1TQ"), ("SyncJumpWidth", "SJW", "CAN_SJW_1TQ"),
+                  ("Mode", "Mode", "CAN_MODE_NORMAL")]
+    differences = []
+    for field, key, default in can_fields:
+        m = re.search(rf"hcan1\.Init\.{field}\s*=\s*(\w+)\s*;", main_c)
+        code_value = m.group(1) if m else "absent"
+        ioc_value = ioc.get(f"CAN1.{key}", default)
+        if code_value != ioc_value:
+            differences.append(f"{field} {code_value} (main.c) / {ioc_value} (.ioc)")
+    check("C5a", "-", not differences,
+          "CAN1 : main.c et .ioc " + ("identiques, " + ioc.get("CAN1.CalculateBaudRate", "?") + " bit/s"
+                                     if not differences else "differents : " + ", ".join(differences)))
+
+    # Taches et queues declarees dans le .ioc : creees dans main.c, pas commentees a la main
+    tasks = [entry.split(",")[0] for entry in ioc.get("FREERTOS.Tasks01", "").split(";") if entry]
+    queues = [entry.split(",")[0] for entry in ioc.get("FREERTOS.Queues01", "").split(";") if entry]
+    missing = [n for n in tasks if not re.search(rf"^\s*osThreadDef\(\s*{n}\s*,", main_c, re.M)]
+    missing += [n for n in queues if not re.search(rf"^\s*osMessageQDef\(\s*{n}\s*,", main_c, re.M)]
+    check("C5b", "-", not missing,
+          "taches et queues du .ioc creees dans main.c : "
+          + ("oui (" + ", ".join(tasks + queues) + ")" if not missing else "commentees ou absentes : " + ", ".join(missing)))
+
     rtos_config = read(BOARD / "Core" / "Inc" / "FreeRTOSConfig.h")
     m = re.search(r"#define\s+configCHECK_FOR_STACK_OVERFLOW\s+(\d+)", rtos_config)
     check("R4a", "-", bool(m) and int(m.group(1)) > 0,
