@@ -7,9 +7,7 @@ Usage (depuis la racine du depot) :
     python tests/run_tests.py -v              # affiche aussi les traces des taches
     python tests/run_tests.py --liste         # liste des secteurs
 
-Le code de src/ n'est jamais modifie : il est copie dans tests/build/app_src/. Si le compilateur est
-ancien (gcc < 11), les declarations placees juste apres un "case" (probleme Q1) y sont rendues
-compilables par l'ajout d'un ";". Le secteur Statique continue de signaler Q1.
+Le code de src/ n'est jamais modifie : il est copie dans tests/build/app_src/.
 """
 
 import argparse
@@ -28,7 +26,7 @@ COMMON = TESTS / "common"
 BUILD = TESTS / "build"
 
 sys.path.insert(0, str(COMMON))
-from vcu_build import compat_include_flags, exe_name, prepare_app_sources, run  # noqa: E402
+from vcu_build import exe_name, prepare_app_sources, run  # noqa: E402
 
 # nom -> (fichier de test, defines propres au secteur, description)
 SECTORS = {
@@ -51,9 +49,9 @@ LINE_RE = re.compile(r"^\[(PASS|FAIL|BLOQUE)\s*\]")
 LEGACY_RE = re.compile(r"^(PASS|FAIL): ")
 
 
-def include_flags(cc):
+def include_flags():
     # Les faux en-tetes FreeRTOS passent avant include/ (qui contient un FreeRTOSConfig.h de demo)
-    return [f"-I{HOST / 'include'}", f"-I{COMMON}", *compat_include_flags(cc), f"-I{INCLUDE}"]
+    return [f"-I{HOST / 'include'}", f"-I{COMMON}", f"-I{INCLUDE}"]
 
 
 def build_sector(cc, name, app_dir, includes):
@@ -131,10 +129,8 @@ def main():
     BUILD.mkdir(parents=True, exist_ok=True)
     app_dir = BUILD / "app_src"
     # console.c est remplace par tests/host/src/console_stub.c
-    _, patched = prepare_app_sources(args.cc, app_dir, exclude=("console.c",))
-    includes = include_flags(args.cc)
-    if patched:
-        print(f"Note : compilateur ancien, contournement Q1 applique sur la copie de : {', '.join(patched)}")
+    prepare_app_sources(app_dir, exclude=("console.c",))
+    includes = include_flags()
 
     env = dict(os.environ)
     if args.verbose:

@@ -157,7 +157,7 @@ static void Test_T11_9(void)
         int detectable = 0;
         for (int raw = 0; raw <= ADC_MAX; raw++)
         {
-            int value = raw; // CheckAndLimitRange modifie son argument : copie locale
+            int32_t value = raw; // CheckAndLimitRange modifie son argument : copie locale
             if (!CheckAndLimitRange(&value, idx))
             {
                 detectable++;

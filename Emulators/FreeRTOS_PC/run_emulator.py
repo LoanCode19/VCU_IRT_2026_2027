@@ -27,7 +27,7 @@ BUILD = EMU / "build"
 COMMON = ROOT / "tests" / "common"
 
 sys.path.insert(0, str(COMMON))
-from vcu_build import compat_include_flags, exe_name, prepare_app_sources, run  # noqa: E402
+from vcu_build import exe_name, prepare_app_sources, run  # noqa: E402
 
 KERNEL_SOURCES = [KERNEL / name for name in
                   ("tasks.c", "queue.c", "list.c", "timers.c", "event_groups.c", "stream_buffer.c")]
@@ -47,14 +47,13 @@ def compile_unit(cc, source, obj, flags):
 def build(cc, test_file, defines):
     # EMU en premier : son FreeRTOSConfig.h passe avant celui de include/ (config de demo), et son
     # portmacro.h (enveloppe du port officiel) avant tout autre
-    includes = [f"-I{EMU}", f"-I{KERNEL / 'include'}", f"-I{COMMON}",
-                *compat_include_flags(cc), f"-I{ROOT / 'include'}"]
+    includes = [f"-I{EMU}", f"-I{KERNEL / 'include'}", f"-I{COMMON}", f"-I{ROOT / 'include'}"]
     dflags = [f"-D{d}" for d in defines]
     out = BUILD / test_file.stem
     out.mkdir(parents=True, exist_ok=True)
 
     # console.c est remplace par console_pc.c (mutex obligatoire avec le port Windows)
-    app_sources, patched = prepare_app_sources(cc, BUILD / "app_src", exclude=("console.c",))
+    app_sources = prepare_app_sources(BUILD / "app_src", exclude=("console.c",))
 
     objects = []
     for src in KERNEL_SOURCES:
@@ -68,7 +67,7 @@ def build(cc, test_file, defines):
     res = run([cc, *map(str, objects), "-o", str(exe), "-lwinmm"])
     if res.returncode != 0:
         raise RuntimeError(f"edition de liens :\n{res.stderr.strip()}")
-    return exe, patched
+    return exe
 
 
 def main():
@@ -99,13 +98,11 @@ def main():
     failed_runs = 0
     for name in selected:
         try:
-            exe, patched = build(args.cc, available[name], args.defines)
+            exe = build(args.cc, available[name], args.defines)
         except RuntimeError as err:
             print(f"\n=== {name} ===\n[FAIL  ] build  -            {err}")
             failed_runs += 1
             continue
-        if patched:
-            print(f"Note : compilateur ancien, contournement Q1 sur la copie de : {', '.join(patched)}")
         try:
             proc = subprocess.run([str(exe)], capture_output=True, text=True, errors="replace",
                                   stdin=subprocess.DEVNULL, timeout=args.timeout, env=env)
