@@ -271,9 +271,10 @@ static void Test_IN9(void)
 {
     Setup();
     QueueHandle_t coolingQueue = xQueueCreate(8U, sizeof(dataMessage_t));
+    CoolingParams_t coolingParams = {&coolingQueue, NULL, TaskCoolingId};
     Push(coolingQueue, motor_tempId, 20, T_NOW);
     Push(coolingQueue, inverter_tempId, 20, T_NOW);
-    RunTaskOnce(TaskCoolingSystem, &coolingQueue);
+    RunTaskOnce(TaskCoolingSystem, &coolingParams);
 
     bool fansOn = false;
     DigitalOrder_t output = {0};

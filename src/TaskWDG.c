@@ -16,7 +16,16 @@
 #include <semphr.h>
 
 WDGTimoutTable wdgTimeoutTable;
-bool checkTasksTimeout(const WdgMessage_t taskMsg[MAX_TASKS]);
+
+// Etat d'une tache surveillee. Un champ a part plutot que taskId = -1 : une enumeration
+// peut etre non signee, et -1 n'y existe pas.
+typedef struct
+{
+    bool fed;            // la tache a deja nourri le watchdog
+    TickType_t lastFeed; // heure de son dernier signe de vie
+} WdgTaskState_t;
+
+static bool checkTasksTimeout(const WdgTaskState_t taskStates[MAX_TASKS]);
 
 void TaskWDG(void *pvParameters)
 {
@@ -25,71 +34,49 @@ void TaskWDG(void *pvParameters)
 
     TickType_t timeNow = xTaskGetTickCount();
 
-    WdgMessage_t taskStates[MAX_TASKS];
-    for (int i = 0; i < MAX_TASKS; i++)
-    {
-        taskStates[i] = (WdgMessage_t){.taskId = -1};
-    }
+    WdgTaskState_t taskStates[MAX_TASKS] = {0};
 
     while (1)
     {
-        vTaskDelayUntil(&timeNow, WDG_TIMEOUT);
+        vTaskDelayUntil(&timeNow, WDG_PERIOD);
         console_print("------(B)WDG------\n");
 
         WdgMessage_t wdgMsg = {0, 0};
 
-        // Envoyer à la queue appropriée selon l'ID avec switch
+        // Signes de vie recus depuis la derniere periode
         while ((xQueueReceive(*xWDGQueue, &wdgMsg, pdMS_TO_TICKS(0))) == pdPASS)
         {
-
-            switch ((TaskId)wdgMsg.taskId)
+            if ((unsigned)wdgMsg.taskId < (unsigned)TASK_COUNT) // en non signe : rejette aussi les valeurs negatives
             {
-            // Wheel speeds went to Main Task
-            case TaskTRVPId:
-                taskStates[TaskTRVPId] = wdgMsg;
-                break;
-            case TaskIHMId:
-                taskStates[TaskIHMId] = wdgMsg;
-                break;
-            case TaskCanRxId:
-                taskStates[TaskCanRxId] = wdgMsg;
-                break;
-            case TaskCanTxId:
-                taskStates[TaskCanTxId] = wdgMsg;
-                break;
-            case TaskMainId:
-                taskStates[TaskMainId] = wdgMsg;
-                break;
-            default:
-                break;
+                taskStates[wdgMsg.taskId].fed = true;
+                taskStates[wdgMsg.taskId].lastFeed = wdgMsg.timestamp;
             }
         }
-        if (!checkTasksTimeout(taskStates))
+        if (checkTasksTimeout(taskStates))
         {
-#ifdef LINUX
-            console_print("one task has timed out\n");
-#else
-            refreshIWDG();
-
-#endif
+            refreshIWDG(); // toutes les taches sont a l'heure
+        }
+        else
+        {
+            // Une tache est en retard : plus de rafraichissement, l'IWDG va redemarrer la carte
+            console_print("WDG: tache en retard\n");
         }
         console_print("------(E)WDG------\n\n");
     }
 }
 
-bool checkTasksTimeout(const WdgMessage_t taskMsg[MAX_TASKS])
+static bool checkTasksTimeout(const WdgTaskState_t taskStates[MAX_TASKS])
 {
     TickType_t timeNow = xTaskGetTickCount();
     for (int i = 0; i < MAX_TASKS; i++)
     {
-        if (taskMsg[i].taskId == -1) // task never fed the watchdog
+        if (wdgTimeoutTable[i] == 0)
         {
-            if (timeNow > wdgTimeoutTable[i])
-            {
-                return false; // Task i has never fed the watchdog and has timed out
-            }
+            continue; // tache non enregistree : pas surveillee
         }
-        else if ((timeNow - taskMsg[i].timestamp) > wdgTimeoutTable[i])
+        // Jamais nourri : le delai court depuis le demarrage (t = 0)
+        TickType_t lastFeed = taskStates[i].fed ? taskStates[i].lastFeed : 0;
+        if ((TickType_t)(timeNow - lastFeed) > wdgTimeoutTable[i])
         {
             return false; // Task i has timed out
         }

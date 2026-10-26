@@ -58,6 +58,10 @@ void EmuCan_Init(void);
 uint32_t EmuTrace_SentCount(QueueHandle_t queue, int messageId);
 
 // ----------------------------------------------------------------------------------------------
+// Watchdog (main_pc.c) : nombre d'appels a refreshIWDG() depuis le demarrage (avec -D USE_WDG)
+uint32_t EmuIwdg_RefreshCount(void);
+
+// ----------------------------------------------------------------------------------------------
 // Outils de test
 
 static inline void EmuWaitMs(uint32_t ms)

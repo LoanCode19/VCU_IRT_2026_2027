@@ -22,7 +22,10 @@ typedef enum TasksIds
     TaskIHMId,
     TaskCanTxId,
     TaskMainId,
+    TaskDigitalSignalsId,
+    TaskCoolingId,
 
+    TASK_COUNT, // nombre de taches surveillees par le watchdog : toujours en dernier
 } TaskId; // MUST BEGIN AT ZERO
 // enums
 

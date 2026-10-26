@@ -58,6 +58,19 @@ void vAssertCalled(const char *file, unsigned long line)
     EmuExit(3);
 }
 
+// Rafraichissement de l'IWDG de la carte (stm32Interface.h), appele par TaskWDG avec -D USE_WDG
+static volatile uint32_t sIwdgRefreshCount = 0;
+
+void refreshIWDG(void)
+{
+    sIwdgRefreshCount++;
+}
+
+uint32_t EmuIwdg_RefreshCount(void)
+{
+    return sIwdgRefreshCount;
+}
+
 void vApplicationMallocFailedHook(void)
 {
     fprintf(stderr, "Tas FreeRTOS epuise (configTOTAL_HEAP_SIZE = %u octets, comme sur la carte)\n",
