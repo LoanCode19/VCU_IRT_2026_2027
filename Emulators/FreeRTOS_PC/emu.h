@@ -75,8 +75,14 @@ uint32_t EmuTrace_SentCount(QueueHandle_t queue, int messageId);
 bool EmuTrace_LastValue(QueueHandle_t queue, int messageId, int32_t *value);
 
 // ----------------------------------------------------------------------------------------------
-// Watchdog (main_pc.c) : nombre d'appels a refreshIWDG() depuis le demarrage (avec -D USE_WDG)
-uint32_t EmuIwdg_RefreshCount(void);
+// Watchdog (main_pc.c) : modele de l'IWDG de la carte, rafraichi par TaskWDG (USE_WDG).
+// Delai de l'IWDG de la carte : (500 + 1) x 32 / f_LSI, avec f_LSI de 17 a 47 kHz selon la puce.
+#define EMU_IWDG_MIN_TIMEOUT_MS 340U // 341 ms a 47 kHz : le redemarrage le plus rapide
+#define EMU_IWDG_MAX_TIMEOUT_MS 945U // 943 ms a 17 kHz : le redemarrage le plus lent
+
+uint32_t EmuIwdg_RefreshCount(void);  // appels a refreshIWDG() depuis le demarrage
+uint32_t EmuIwdg_LastRefreshMs(void); // heure du dernier appel (0 : jamais)
+uint32_t EmuIwdg_MaxGapMs(void);      // plus long ecart entre deux appels, demarrage compris
 
 // ----------------------------------------------------------------------------------------------
 // Outils de test

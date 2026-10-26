@@ -40,6 +40,7 @@
 #define INCLUDE_vTaskDelay 1
 #define INCLUDE_xTaskGetSchedulerState 1
 #define INCLUDE_uxTaskGetStackHighWaterMark 0
+#define INCLUDE_xTaskGetHandle 1 // tests du watchdog : retrouver une tache du VCU par son nom (carte : 0)
 
 // Espion des queues (emu_trace.c) : chaque message depose par une tache (xQueueSend) est compte,
 // pour que les tests observent le VCU de l'exterieur. pvItemToQueue est le parametre de
