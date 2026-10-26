@@ -137,6 +137,15 @@ BaseType_t xQueueReceive(QueueHandle_t queueHandle, void *item, TickType_t ticks
     return pdPASS;
 }
 
+BaseType_t xQueueReceiveFromISR(QueueHandle_t queueHandle, void *item, BaseType_t *higherPriorityTaskWoken)
+{
+    if (higherPriorityTaskWoken != NULL)
+    {
+        *higherPriorityTaskWoken = pdFALSE;
+    }
+    return xQueueReceive(queueHandle, item, 0U);
+}
+
 BaseType_t xQueuePeek(QueueHandle_t queueHandle, void *item, TickType_t ticksToWait)
 {
     TestQueue_t *queue = (TestQueue_t *)queueHandle;

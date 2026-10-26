@@ -35,13 +35,26 @@ const CanRxSignal_t canRxTable[] = {
 };
 const unsigned canRxTableSize = sizeof(canRxTable) / sizeof(canRxTable[0]);
 
+// Depose le message sans attendre. Queue pleine : le plus ancien laisse sa place et la perte est
+// comptee (T13). Sur sans section critique : TaskCanRx est plus prioritaire que les taches qui lisent.
+static void SendLatest(QueueHandle_t queue, const dataMessage_t *msg, volatile uint32_t *lost)
+{
+    if (xQueueSend(queue, msg, 0) != pdPASS)
+    {
+        dataMessage_t oldest;
+        (void)xQueueReceive(queue, &oldest, 0);
+        (void)xQueueSend(queue, msg, 0);
+        (*lost)++;
+    }
+}
+
 // Le refroidissement recoit aussi les temperatures. Pointeur NULL : pas de refroidissement
 // (tests qui remplissent CanRxParams_t sans ce champ).
 static void SendToCooling(QueueHandle_t *xCoolingQueue, const dataMessage_t *msg)
 {
     if ((xCoolingQueue != NULL) && (*xCoolingQueue != NULL))
     {
-        xQueueSend(*xCoolingQueue, msg, pdMS_TO_TICKS(5));
+        SendLatest(*xCoolingQueue, msg, &canRxStats.lostCooling);
     }
 }
 
@@ -79,10 +92,10 @@ static void RouteMessage(const CanRxParams_t *params, CanRoute_t route, const da
 {
     if (route == CAN_TO_TRVP)
     {
-        xQueueSend(*params->xTRVPQueue, msg, pdMS_TO_TICKS(5));
+        SendLatest(*params->xTRVPQueue, msg, &canRxStats.lostTrvp);
         return;
     }
-    xQueueSend(*params->xMainQueue, msg, pdMS_TO_TICKS(5));
+    SendLatest(*params->xMainQueue, msg, &canRxStats.lostMain);
     if (route == CAN_TO_MAIN_AND_COOLING)
     {
         SendToCooling(params->xCoolingQueue, msg);
@@ -135,7 +148,14 @@ void CanRx_OnFrameFromISR(const CanFrame_t *frame, BaseType_t *higherPriorityTas
     {
         return; // queues pas encore creees par MainApp()
     }
-    (void)xQueueSendFromISR(xCanRxQueue, frame, higherPriorityTaskWoken);
+    if (xQueueSendFromISR(xCanRxQueue, frame, higherPriorityTaskWoken) != pdPASS)
+    {
+        // Queue pleine : la trame la plus ancienne laisse sa place a la nouvelle (T13)
+        CanFrame_t oldest;
+        (void)xQueueReceiveFromISR(xCanRxQueue, &oldest, higherPriorityTaskWoken);
+        (void)xQueueSendFromISR(xCanRxQueue, frame, higherPriorityTaskWoken);
+        canRxStats.rxQueueFull++;
+    }
 }
 
 void TaskCanRx(void *pvParameters)

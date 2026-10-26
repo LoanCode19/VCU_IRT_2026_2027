@@ -12,6 +12,11 @@ typedef struct
     uint32_t isrErrors; // lecture du FIFO en echec dans l'ISR de la carte
     uint32_t unknownId; // ID absent de la table, ou trame etendue
     uint32_t badDlc;    // trame trop courte pour un de ses signaux
+    // Queue pleine : la plus ancienne trame ou le plus ancien message a laisse sa place (T13)
+    uint32_t rxQueueFull;
+    uint32_t lostTrvp;
+    uint32_t lostMain;
+    uint32_t lostCooling;
 } CanRxStats_t;
 
 extern volatile CanRxStats_t canRxStats;

@@ -10,6 +10,7 @@ QueueHandle_t xQueueCreate(UBaseType_t queueLength, UBaseType_t itemSize);
 BaseType_t xQueueSend(QueueHandle_t queue, const void *item, TickType_t ticksToWait);
 BaseType_t xQueueSendFromISR(QueueHandle_t queue, const void *item, BaseType_t *higherPriorityTaskWoken);
 BaseType_t xQueueReceive(QueueHandle_t queue, void *item, TickType_t ticksToWait);
+BaseType_t xQueueReceiveFromISR(QueueHandle_t queue, void *item, BaseType_t *higherPriorityTaskWoken);
 BaseType_t xQueuePeek(QueueHandle_t queue, void *item, TickType_t ticksToWait);
 
 void vTestEnableEscapeWhenQueueEmpty(jmp_buf *env);

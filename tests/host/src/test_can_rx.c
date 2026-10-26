@@ -300,6 +300,7 @@ static void TestCanRx_Overload(void)
 {
     // TRVP en retard : sa queue est pleine quand de nouvelles valeurs APPS arrivent
     Setup(100U);
+    CanRxStats_t before = canRxStats;
     dataMessage_t old = {.id = wheelFRId, .data = 1, .timestamp = 50, .timeStatus = STATUS_TIME_OK};
     while (xQueueSend(xTRVPQueue, &old, 0) == pdPASS)
     {
@@ -313,6 +314,10 @@ static void TestCanRx_Overload(void)
     vt_check("R2a", "T 11.9.2.d", latestAvailable,
              "queue TRVP pleine, 3 nouvelles valeurs APPS1 -> derniere valeur %s (attendu disponible, sinon perte silencieuse)",
              latestAvailable ? "disponible" : "perdue");
+
+    unsigned long lost = (unsigned long)(canRxStats.lostTrvp - before.lostTrvp);
+    vt_check("R2b", "T 11.9.2.d", lost == 3UL,
+             "queue TRVP pleine, 3 nouvelles valeurs APPS1 -> %lu perte(s) comptee(s) (attendu 3)", lost);
 }
 
 int main(void)
