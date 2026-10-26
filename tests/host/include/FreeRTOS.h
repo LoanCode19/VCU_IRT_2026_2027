@@ -27,4 +27,9 @@ void vTestAssertFailed(const char *file, int line);
         vTestAssertFailed(__FILE__, __LINE__); \
     }
 
+// Fin d'une interruption qui a reveille une tache (portmacro.h sur la carte). Ici : seulement compte
+// (test_rtos.h), il n'y a pas d'ordonnanceur.
+void vTestYieldFromISR(BaseType_t higherPriorityTaskWoken);
+#define portYIELD_FROM_ISR(x) vTestYieldFromISR(x)
+
 #endif // TEST_HOST_FREERTOS_H

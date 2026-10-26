@@ -40,6 +40,9 @@ void vTestResetCreatedTasks(void);
 unsigned uxTestCreatedTaskCount(void);
 const TestCreatedTask_t *pxTestCreatedTask(unsigned index);
 
+// Appels a portYIELD_FROM_ISR() depuis le demarrage du test (ISR de la carte).
+unsigned uxTestYieldFromISRCount(void);
+
 // Adresse d'une variable locale de main() : sert de borne haute de la pile pour detecter B5.
 void vTestSetStackTop(const void *stackTop);
 

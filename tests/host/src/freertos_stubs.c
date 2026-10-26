@@ -203,6 +203,24 @@ void vTestSetTickCount(TickType_t tickCount)
     sTickCount = tickCount;
 }
 
+TickType_t xTaskGetTickCountFromISR(void)
+{
+    return xTaskGetTickCount();
+}
+
+static unsigned sYieldFromIsrCount = 0U;
+
+void vTestYieldFromISR(BaseType_t higherPriorityTaskWoken)
+{
+    (void)higherPriorityTaskWoken;
+    sYieldFromIsrCount++;
+}
+
+unsigned uxTestYieldFromISRCount(void)
+{
+    return sYieldFromIsrCount;
+}
+
 void vTestSetTickAutoIncrement(bool enable)
 {
     sTickAutoIncrement = enable;
