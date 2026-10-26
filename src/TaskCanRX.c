@@ -2,6 +2,7 @@
 #include "queue.h"
 
 #include "structs.h"
+#include "canIds.h"
 #include "utils.h"
 #include "project_config.h"
 
@@ -14,22 +15,6 @@
 #include <semphr.h>
 
 SemaphoreHandle_t xCanRxSemaphore;
-
-typedef enum canIds
-{
-    CAN_wheelFRId = 0x20,
-    CAN_wheelFLId = 0x21,
-    CAN_wheelRRId = 0x22,
-    CAN_wheelRLId = 0x23,
-
-    CAN_apps1Id = 0x30,
-    CAN_apps2Id = 0x31,
-
-    CAN_motor_tempId = 0x40,
-    CAN_inverter_tempId = 0x41,
-    CAN_voltageId = 0x42,
-
-} CanIds;
 
 // Le refroidissement recoit aussi les temperatures. Pointeur NULL : pas de refroidissement
 // (tests qui remplissent CanRxParams_t sans ce champ).
@@ -68,46 +53,46 @@ void TaskCanRx(void *pvParameters)
             appMsg.data = canMsg.data;
             appMsg.timestamp = xTaskGetTickCount();
 
-            switch ((CanIds)canMsg.id)
+            switch (canMsg.id)
             {
             // Wheel speeds went to Main Task
-            case CAN_wheelFRId:
+            case CAN_ID_WHEEL_FR:
                 appMsg.id = wheelFRId;
                 xQueueSend(*xTRVPQueue, &appMsg, pdMS_TO_TICKS(5));
                 break;
-            case CAN_wheelFLId:
+            case CAN_ID_WHEEL_FL:
                 appMsg.id = wheelFLId;
                 xQueueSend(*xTRVPQueue, &appMsg, pdMS_TO_TICKS(5));
                 break;
-            case CAN_wheelRRId:
+            case CAN_ID_WHEEL_RR:
                 appMsg.id = wheelRRId;
                 xQueueSend(*xTRVPQueue, &appMsg, pdMS_TO_TICKS(5));
                 break;
-            case CAN_wheelRLId:
+            case CAN_ID_WHEEL_RL:
                 appMsg.id = wheelRLId;
                 xQueueSend(*xTRVPQueue, &appMsg, pdMS_TO_TICKS(5));
                 break;
 
-            case CAN_apps1Id:
+            case CAN_ID_APPS1:
                 appMsg.id = apps1Id;
                 xQueueSend(*xTRVPQueue, &appMsg, pdMS_TO_TICKS(5));
                 break;
-            case CAN_apps2Id:
+            case CAN_ID_APPS2:
                 appMsg.id = apps2Id;
                 xQueueSend(*xTRVPQueue, &appMsg, pdMS_TO_TICKS(5));
                 break;
 
-            case CAN_motor_tempId:
+            case CAN_ID_MOTOR_TEMP:
                 appMsg.id = motor_tempId;
                 xQueueSend(*xMainQueue, &appMsg, pdMS_TO_TICKS(5));
                 SendToCooling(xCoolingQueue, &appMsg);
                 break;
-            case CAN_inverter_tempId:
+            case CAN_ID_INVERTER_TEMP:
                 appMsg.id = inverter_tempId;
                 xQueueSend(*xMainQueue, &appMsg, pdMS_TO_TICKS(5));
                 SendToCooling(xCoolingQueue, &appMsg);
                 break;
-            case CAN_voltageId:
+            case CAN_ID_VOLTAGE:
                 appMsg.id = voltageId;
                 xQueueSend(*xMainQueue, &appMsg, pdMS_TO_TICKS(5));
                 break;

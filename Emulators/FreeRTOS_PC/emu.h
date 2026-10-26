@@ -35,11 +35,16 @@ int EmuTest_Run(void);
 
 #define EMU_CAN_MAX_SIGNALS 16U
 
-// Envoie une trame tout de suite. La valeur est codee sur les 4 premiers octets, big-endian.
+// Envoie une trame quelconque tout de suite (dlc octets utiles dans data).
+bool EmuCan_SendFrame(uint32_t stdId, uint8_t dlc, const uint8_t data[8]);
+
+// Envoie une trame tout de suite au format provisoire des capteurs : la valeur sur les 4 premiers
+// octets, big-endian, DLC 4.
 bool EmuCan_SendNow(uint32_t stdId, int32_t value);
 
-// Capteur simule : emet stdId toutes les periodMs avec la derniere valeur fixee.
-void EmuCan_SetPeriodic(uint32_t stdId, uint32_t periodMs, int32_t value);
+// Capteur simule : emet stdId toutes les periodMs avec le dernier contenu fixe.
+void EmuCan_SetPeriodicFrame(uint32_t stdId, uint32_t periodMs, uint8_t dlc, const uint8_t data[8]);
+void EmuCan_SetPeriodic(uint32_t stdId, uint32_t periodMs, int32_t value); // format provisoire
 void EmuCan_SetValue(uint32_t stdId, int32_t value);
 void EmuCan_Mute(uint32_t stdId, bool muted); // panne : le capteur se tait (fil coupe, ECU en defaut)
 void EmuCan_StopAll(void);
@@ -49,6 +54,10 @@ uint32_t EmuCan_DroppedFrames(void);
 
 // Appele par main_pc.c avant MainApp() : cree la tache "bus CAN" (1 ms, priorite max).
 void EmuCan_Init(void);
+
+// Onduleur simule : ses trames periodiques, dans le format que le VCU attend
+void EmuDti_SetTemperatures(int32_t motorC, int32_t inverterC, uint32_t periodMs);
+void EmuDti_SetVoltage(int32_t volts, uint32_t periodMs);
 
 // ----------------------------------------------------------------------------------------------
 // Espion des queues (emu_trace.c)

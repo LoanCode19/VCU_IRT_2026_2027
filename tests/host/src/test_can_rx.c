@@ -6,6 +6,7 @@
 #include <stdint.h>
 
 #include "structs.h"
+#include "canIds.h"
 #include "queueHandles.h"
 #include "TaskCanRX.h"
 #include "test_app.h"
@@ -16,18 +17,79 @@ static CanRxParams_t sCanRxParams; // static : jamais sur la pile (cf. B5)
 static void Setup(TickType_t now)
 {
     BootMainApp();
-    sCanRxParams = (CanRxParams_t){&xMainQueue, &xTRVPQueue, &xCanRxQueue, &xWDGQueue, TaskCanRxId};
+    sCanRxParams = (CanRxParams_t){&xMainQueue, &xTRVPQueue, &xCanRxQueue, &xWDGQueue, TaskCanRxId, &xCoolingQueue};
     vTestSetTickAutoIncrement(false);
     vTestSetTickCount(now);
 }
 
-// Trame telle que l'ISR de VCU_STM32F407/Core/Src/main.c la depose aujourd'hui
-static bool PushFrame(uint32_t canId, uint32_t data)
+// Trame telle que l'ISR de VCU_STM32F407/Core/Src/main.c la depose aujourd'hui :
+// seuls les 4 premiers octets passent, et la longueur est perdue (B6)
+static bool PushFrame(uint32_t canId, uint8_t dlc, const uint8_t data[8])
 {
     dataCan frame = {0};
     frame.id = canId; // uint8_t : un ID sur 11 bits est tronque ici (B6)
-    frame.data = data;
+    (void)dlc;
+    frame.data = ((uint32_t)data[0] << 24) | ((uint32_t)data[1] << 16) | ((uint32_t)data[2] << 8) | data[3];
     return xQueueSendFromISR(xCanRxQueue, &frame, NULL) == pdPASS;
+}
+
+static void PutBigEndian(uint8_t *dst, uint32_t value, unsigned bytes)
+{
+    for (unsigned i = 0; i < bytes; i++)
+    {
+        dst[i] = (uint8_t)(value >> (8U * (bytes - 1U - i)));
+    }
+}
+
+// Format provisoire des capteurs : une valeur de 4 octets big-endian en tete de trame
+static bool PushValue(uint32_t canId, int32_t value)
+{
+    uint8_t data[8] = {0};
+    PutBigEndian(data, (uint32_t)value, 4U);
+    return PushFrame(canId, 4U, data);
+}
+
+// Un signal du VCU, dans la trame qui le transporte sur le bus
+static bool PushSignal(MessageIds appId, int32_t value)
+{
+    switch (appId)
+    {
+    case wheelFRId:
+        return PushValue(CAN_ID_WHEEL_FR, value);
+    case wheelFLId:
+        return PushValue(CAN_ID_WHEEL_FL, value);
+    case wheelRRId:
+        return PushValue(CAN_ID_WHEEL_RR, value);
+    case wheelRLId:
+        return PushValue(CAN_ID_WHEEL_RL, value);
+    case apps1Id:
+        return PushValue(CAN_ID_APPS1, value);
+    case apps2Id:
+        return PushValue(CAN_ID_APPS2, value);
+    case motor_tempId:
+        return PushValue(CAN_ID_MOTOR_TEMP, value);
+    case inverter_tempId:
+        return PushValue(CAN_ID_INVERTER_TEMP, value);
+    case voltageId:
+        return PushValue(CAN_ID_VOLTAGE, value);
+    default:
+        return false;
+    }
+}
+
+// Vide la queue et dit si elle contenait un message appId de valeur value
+static bool HasMessage(QueueHandle_t queue, MessageIds appId, int32_t value)
+{
+    bool found = false;
+    dataMessage_t msg = {0};
+    while (xQueueReceive(queue, &msg, 0) == pdPASS)
+    {
+        if ((msg.id == appId) && (msg.data == value))
+        {
+            found = true;
+        }
+    }
+    return found;
 }
 
 static void RunCanRx(void)
@@ -38,12 +100,12 @@ static void RunCanRx(void)
 static void TestCanRx_Timestamp(void)
 {
     Setup(1234U);
-    (void)PushFrame(0x30, 2000);
+    (void)PushSignal(apps1Id, 2000);
     RunCanRx();
 
     dataMessage_t msg = {0};
     if (!vt_check("NR-1", "-", xQueueReceive(xTRVPQueue, &msg, 0) == pdPASS && msg.id == apps1Id,
-                  "trame 0x30 -> message APPS1 vers TRVP"))
+                  "trame APPS1 -> message APPS1 vers TRVP"))
     {
         vt_blocked("B1a", "T 11.9.2.d", "aucun message APPS1 recu, horodatage non verifiable");
         return;
@@ -56,41 +118,41 @@ static void TestCanRx_Routing(void)
 {
     static const struct
     {
-        uint32_t canId;
         MessageIds appId;
         bool toTrvp;
+        const char *name;
     } routes[] = {
-        {0x20, wheelFRId, true}, {0x21, wheelFLId, true}, {0x22, wheelRRId, true}, {0x23, wheelRLId, true},
-        {0x30, apps1Id, true}, {0x31, apps2Id, true},
-        {0x40, motor_tempId, false}, {0x41, inverter_tempId, false}, {0x42, voltageId, false}};
+        {wheelFRId, true, "roue FR"}, {wheelFLId, true, "roue FL"}, {wheelRRId, true, "roue RR"},
+        {wheelRLId, true, "roue RL"}, {apps1Id, true, "APPS1"}, {apps2Id, true, "APPS2"},
+        {motor_tempId, false, "temperature moteur"}, {inverter_tempId, false, "temperature onduleur"},
+        {voltageId, false, "tension"}};
 
     bool allOk = true;
     for (unsigned i = 0; i < sizeof(routes) / sizeof(routes[0]); i++)
     {
         Setup(100U);
-        (void)PushFrame(routes[i].canId, 42U);
+        (void)PushSignal(routes[i].appId, 42);
         RunCanRx();
-        dataMessage_t msg = {0};
         QueueHandle_t expected = routes[i].toTrvp ? xTRVPQueue : xMainQueue;
-        bool ok = (xQueueReceive(expected, &msg, 0) == pdPASS) && (msg.id == routes[i].appId) && (msg.data == 42);
-        if (!ok)
+        if (!HasMessage(expected, routes[i].appId, 42))
         {
             allOk = false;
-            vt_note("trame 0x%02lX mal routee", (unsigned long)routes[i].canId);
+            vt_note("%s mal route", routes[i].name);
         }
     }
-    vt_check("NR-2", "-", allOk, "9 ID CAN connus routes vers la bonne tache avec le bon identifiant");
+    vt_check("NR-2", "-", allOk, "9 signaux recus routes vers la bonne tache avec le bon identifiant");
 }
 
 static void TestCanRx_Decoding(void)
 {
     Setup(100U);
-    (void)PushFrame(0x120, 77U); // ID standard 11 bits inconnu du VCU
+    uint32_t aliasId = CAN_ID_APPS1 | 0x100U; // ID sur 11 bits dont l'octet bas est celui de APPS1
+    (void)PushValue(aliasId, 77);
     RunCanRx();
     UBaseType_t forwarded = uxTestQueueCount(xTRVPQueue) + uxTestQueueCount(xMainQueue);
     vt_check("B6a", "T 11.9.2.d", forwarded == 0U,
-             "trame d'ID 0x120 (inconnue) -> %u message(s) transmis (attendu 0, elle est lue comme 0x20 = roue FR)",
-             (unsigned)forwarded);
+             "trame d'ID 0x%03lX (inconnue) -> %u message(s) transmis (attendu 0 ; tronque a 8 bits, l'ID est celui de APPS1)",
+             (unsigned long)aliasId, (unsigned)forwarded);
 
     unsigned idBits = (unsigned)(sizeof(((dataCan *)0)->id) * 8U);
     vt_check("B6b", "-", idBits >= 11U, "dataCan.id sur %u bits (attendu >= 11 pour un ID standard)", idBits);
@@ -108,20 +170,12 @@ static void TestCanRx_Overload(void)
     while (xQueueSend(xTRVPQueue, &old, 0) == pdPASS)
     {
     }
-    (void)PushFrame(0x30, 1000);
-    (void)PushFrame(0x30, 2000);
-    (void)PushFrame(0x30, 3000);
+    (void)PushSignal(apps1Id, 1000);
+    (void)PushSignal(apps1Id, 2000);
+    (void)PushSignal(apps1Id, 3000);
     RunCanRx();
 
-    bool latestAvailable = false;
-    dataMessage_t msg = {0};
-    while (xQueueReceive(xTRVPQueue, &msg, 0) == pdPASS)
-    {
-        if ((msg.id == apps1Id) && (msg.data == 3000))
-        {
-            latestAvailable = true;
-        }
-    }
+    bool latestAvailable = HasMessage(xTRVPQueue, apps1Id, 3000);
     vt_check("R2a", "T 11.9.2.d", latestAvailable,
              "queue TRVP pleine, 3 nouvelles valeurs APPS1 -> derniere valeur %s (attendu disponible, sinon perte silencieuse)",
              latestAvailable ? "disponible" : "perdue");
