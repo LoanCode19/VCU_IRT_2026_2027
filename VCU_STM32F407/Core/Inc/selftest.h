@@ -2,7 +2,8 @@
 #define SELFTEST_H
 
 // Autotest de la carte nue (decision P10 : pas encore d'electronique). Choisir le mode ici, compiler
-// en Debug, flasher, puis lire la console SWV (ITM, port 0). Remettre 0 avant de commiter.
+// en Debug, flasher, puis lire la console SWV, port ITM 1 : un onglet a part des traces du VCU
+// (port 0), qu'on peut decocher pour qu'elles ne ralentissent pas la carte. Remettre 0 avant de commiter.
 //   0 : desactive. Toujours 0 dans le depot (verifie par le test C4b)
 //   1 : observation. Une ligne par seconde (compteurs CAN, tas minimum), sans aucune trame
 //   2 : CAN en boucle interne. La carte s'envoie les trames des capteurs et de l'onduleur ; le VCU

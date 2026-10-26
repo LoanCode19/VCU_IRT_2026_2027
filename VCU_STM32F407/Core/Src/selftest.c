@@ -55,6 +55,7 @@ void SelfTest_BuildFrames(CanFrame_t frames[SELFTEST_FRAME_COUNT])
 #ifndef SELFTEST_HOST
 #if VCU_SELFTEST != 0
 
+#include <stdarg.h>
 #include <stdio.h>
 
 #include "FreeRTOS.h"
@@ -66,8 +67,11 @@ void SelfTest_BuildFrames(CanFrame_t frames[SELFTEST_FRAME_COUNT])
 #define SELFTEST_PERIOD_MS 10U        // une salve toutes les 10 ms, comme les capteurs
 #define SELFTEST_PRINT_MS 1000U       // une ligne par seconde sur la console SWV
 #define SELFTEST_HOG_AFTER_MS 5000U   // mode 4 : debut du blocage
-#define SELFTEST_STACK_WORDS 512U     // printf
+#define SELFTEST_STACK_WORDS 512U     // vsnprintf et sa ligne de 256 octets
 #define SELFTEST_PRIORITY (tskIDLE_PRIORITY + 2U) // sous les taches du VCU qui traitent les trames
+#define SELFTEST_ITM_PORT 1U          // console SWV : a part des traces du VCU (port 0, printf)
+
+extern volatile uint8_t lastResetByIwdg; // main.c : 1 si le dernier redemarrage vient de l'IWDG
 
 static CAN_HandleTypeDef *sCan = NULL;
 static uint32_t sSent = 0U;    // trames acceptees par le controleur CAN
@@ -108,16 +112,43 @@ static void SendFrames(const CanFrame_t frames[SELFTEST_FRAME_COUNT])
 }
 #endif
 
+// Comme ITM_SendChar() (core_cm4.h), mais sur le port 1. Rien n'est envoye si la console SWV est
+// fermee ou si le port 1 n'y est pas coche.
+static void PrintItm(const char *fmt, ...)
+{
+  char line[256];
+  va_list args;
+  va_start(args, fmt);
+  int len = vsnprintf(line, sizeof(line), fmt, args);
+  va_end(args);
+  if ((len <= 0) || ((ITM->TCR & ITM_TCR_ITMENA_Msk) == 0UL) || ((ITM->TER & (1UL << SELFTEST_ITM_PORT)) == 0UL))
+  {
+    return;
+  }
+  if ((size_t)len >= sizeof(line))
+  {
+    len = (int)sizeof(line) - 1; // ligne tronquee
+  }
+  for (int i = 0; i < len; i++)
+  {
+    while (ITM->PORT[SELFTEST_ITM_PORT].u32 == 0UL)
+    {
+      __NOP();
+    }
+    ITM->PORT[SELFTEST_ITM_PORT].u8 = (uint8_t)line[i];
+  }
+}
+
 static void PrintStatus(TickType_t now)
 {
-  printf("autotest %d, t = %lu s : tx %lu, refus %lu | rx : isr %lu, inconnu %lu, dlc %lu, plein %lu, "
-         "pertes %lu/%lu/%lu, bus-off %lu | txErr %lu | tas min %u o\n",
-         VCU_SELFTEST, (unsigned long)(now / configTICK_RATE_HZ), (unsigned long)sSent, (unsigned long)sRefused,
-         (unsigned long)canRxStats.isrErrors, (unsigned long)canRxStats.unknownId,
-         (unsigned long)canRxStats.badDlc, (unsigned long)canRxStats.rxQueueFull,
-         (unsigned long)canRxStats.lostTrvp, (unsigned long)canRxStats.lostMain,
-         (unsigned long)canRxStats.lostCooling, (unsigned long)canRxStats.busOff, (unsigned long)canTxErrors,
-         (unsigned)xPortGetMinimumEverFreeHeapSize());
+  PrintItm("autotest %d, t = %lu s : tx %lu, refus %lu | rx : isr %lu, inconnu %lu, dlc %lu, plein %lu, "
+           "pertes %lu/%lu/%lu, bus-off %lu | txErr %lu | tas min %u o\n",
+           VCU_SELFTEST, (unsigned long)(now / configTICK_RATE_HZ), (unsigned long)sSent, (unsigned long)sRefused,
+           (unsigned long)canRxStats.isrErrors, (unsigned long)canRxStats.unknownId,
+           (unsigned long)canRxStats.badDlc, (unsigned long)canRxStats.rxQueueFull,
+           (unsigned long)canRxStats.lostTrvp, (unsigned long)canRxStats.lostMain,
+           (unsigned long)canRxStats.lostCooling, (unsigned long)canRxStats.busOff, (unsigned long)canTxErrors,
+           (unsigned)xPortGetMinimumEverFreeHeapSize());
 }
 
 static void SelfTestTask(void *argument)
@@ -125,7 +156,8 @@ static void SelfTestTask(void *argument)
   (void)argument;
   CanFrame_t frames[SELFTEST_FRAME_COUNT];
   SelfTest_BuildFrames(frames);
-  printf("Autotest de la carte nue : mode %d (selftest.h)\n", VCU_SELFTEST);
+  PrintItm("Autotest de la carte nue : mode %d (selftest.h). Dernier redemarrage : %s\n", VCU_SELFTEST,
+           lastResetByIwdg ? "par le watchdog (IWDG)" : "normal");
 
   TickType_t wake = xTaskGetTickCount();
   TickType_t lastPrint = wake;
@@ -134,8 +166,7 @@ static void SelfTestTask(void *argument)
 #if VCU_SELFTEST == SELFTEST_WATCHDOG
     if (wake >= pdMS_TO_TICKS(SELFTEST_HOG_AFTER_MS))
     {
-      printf("autotest 4 : la tache d'autotest accapare le processeur, l'IWDG doit redemarrer la carte\n");
-      fflush(stdout);
+      PrintItm("autotest 4 : la tache d'autotest accapare le processeur, l'IWDG doit redemarrer la carte\n");
       vTaskPrioritySet(NULL, configMAX_PRIORITIES - 1U);
       for (;;)
       {
