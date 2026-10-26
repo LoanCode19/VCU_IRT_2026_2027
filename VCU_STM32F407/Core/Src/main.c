@@ -29,6 +29,7 @@
 #include "queueHandles.h"
 #include "stm32Interface.h"
 #include "TaskCanRX.h"
+#include "selftest.h"
 
 /* USER CODE END Includes */
 
@@ -258,6 +259,7 @@ static void MX_CAN1_Init(void)
     Error_Handler();
   }
   /* USER CODE BEGIN CAN1_Init 2 */
+  SelfTest_ConfigureCan(&hcan1); // autotest de la carte nue (selftest.h), sans effet si VCU_SELFTEST vaut 0
 
   /*##-2- Configure the CAN Filter ###########################################*/
   sFilterConfig.FilterBank = 0;
@@ -628,6 +630,7 @@ void StartDefaultTask(void const * argument)
   /* USER CODE BEGIN 5 */
   /* Tache imposee par CubeMX, impossible a supprimer : elle se termine tout de suite et rend
      sa memoire au tas. Les taches du VCU sont creees par MainApp(). */
+  SelfTest_Start(); // autotest de la carte nue (selftest.h), sans effet si VCU_SELFTEST vaut 0
   vTaskDelete(NULL);
   /* USER CODE END 5 */
 }

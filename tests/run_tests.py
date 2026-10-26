@@ -25,6 +25,8 @@ HOST = TESTS / "host"
 COMMON = TESTS / "common"
 BUILD = TESTS / "build"
 BOARD_MAIN = ROOT / "VCU_STM32F407" / "Core" / "Src" / "main.c"
+BOARD_SELFTEST = ROOT / "VCU_STM32F407" / "Core" / "Src" / "selftest.c"
+BOARD_INC = ROOT / "VCU_STM32F407" / "Core" / "Inc"
 
 sys.path.insert(0, str(COMMON))
 from vcu_build import exe_name, prepare_app_sources, run  # noqa: E402
@@ -36,7 +38,7 @@ SECTORS = {
     "vitesse": ("test_vitesse.c", [], "Vitesse vehicule"),
     "can_rx": ("test_can_rx.c", [], "Reception CAN (TaskCanRx)"),
     "can_tx": ("test_can_tx.c", [], "Emission CAN (TaskCanTx)"),
-    "carte": ("test_carte.c", [], "Code CAN de la carte (fausse HAL)"),
+    "carte": ("test_carte.c", ["SELFTEST_HOST"], "Code CAN de la carte (fausse HAL)"),
     "chaine": ("test_chaine.c", [], "Chaine TRVP -> Main -> CanTx"),
     "demarrage": ("test_integration.c", [], "Demarrage (MainApp)"),
     "watchdog": ("test_watchdog.c", ["USE_WDG", "refreshIWDG=test_refreshIWDG"], "Watchdog"),
@@ -91,7 +93,8 @@ def build_sector(cc, name, app_dir, includes):
             if extract_board_user_code(out_dir) is None:
                 return None, f"zone USER CODE 4 introuvable dans {BOARD_MAIN.name}"
             units.append((HOST / "src" / "hal_stub.c", []))
-            test_flags.append(f"-I{out_dir}")
+            units.append((BOARD_SELFTEST, [f"-I{BOARD_INC}"])) # trames de l'autotest, sans la partie HAL
+            test_flags += [f"-I{out_dir}", f"-I{BOARD_INC}"]
         else:
             units.append((HOST / "src" / "can_stub.c", []))
         units.append((HOST / "src" / test_file, test_flags))

@@ -3,7 +3,7 @@
 // callback d'erreur, CanTx_Send), copiee par run_tests.py et compilee avec une fausse HAL
 // (hal_stub.c), avec TaskCanTx et les queues de MainApp() en vrai
 // Problemes : C1, C6 et emission vers l'onduleur. Ce sont les essais carte C-C1a et C-C6a, emules
-// faute d'electronique (decision P10).
+// faute d'electronique (decision P10). Aussi : les trames de l'autotest de la carte (selftest.c).
 
 #include <setjmp.h>
 #include <stdbool.h>
@@ -17,6 +17,8 @@
 #include "my_fp.h"
 #include "TaskCanRX.h"
 #include "TaskCanTx.h"
+#include "selftest.h"
+#include "throttle.h"
 #include "stm32Interface.h"
 #include "test_app.h"
 #include "vcu_test.h"
@@ -240,6 +242,61 @@ static void TestCarte_TxRefusedAndExtended(void)
              errors, (unsigned long)header.IDE, (unsigned long)header.ExtId, (unsigned long)header.StdId);
 }
 
+static unsigned DrainMessages(QueueHandle_t queue, dataMessage_t *messages, unsigned max)
+{
+    unsigned n = 0U;
+    while ((n < max) && (xQueueReceive(queue, &messages[n], 0) == pdPASS))
+    {
+        n++;
+    }
+    return n;
+}
+
+static bool HasValue(const dataMessage_t *messages, unsigned count, MessageIds id, int32_t value)
+{
+    for (unsigned i = 0; i < count; i++)
+    {
+        if ((messages[i].id == id) && (messages[i].data == value))
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+// Trames de l'autotest de la carte (modes 2 et 3) : le VCU doit les comprendre, sinon l'essai sur la
+// carte ne prouverait rien
+static void TestCarte_SelfTestFrames(void)
+{
+    Setup();
+    CanFrame_t frames[SELFTEST_FRAME_COUNT];
+    SelfTest_BuildFrames(frames);
+    for (unsigned i = 0; i < SELFTEST_FRAME_COUNT; i++)
+    {
+        CanRx_OnFrameFromISR(&frames[i], NULL);
+    }
+    static CanRxParams_t canRxParams; // static : jamais sur la pile (cf. B5)
+    canRxParams = (CanRxParams_t){&xMainQueue, &xTRVPQueue, &xCanRxQueue, &xWDGQueue, TaskCanRxId, &xCoolingQueue};
+    RunTaskOnce(TaskCanRx, &canRxParams);
+
+    dataMessage_t trvp[16];
+    dataMessage_t main[16];
+    unsigned nTrvp = DrainMessages(xTRVPQueue, trvp, 16U);
+    unsigned nMain = DrainMessages(xMainQueue, main, 16U);
+    int32_t apps1 = (int32_t)(potmin[0] + (potmax[0] - potmin[0]) * 0.4f);
+    int32_t apps2 = (int32_t)(potmin[1] + (potmax[1] - potmin[1]) * 0.4f);
+    bool sensors = (nTrvp == 6U) && HasValue(trvp, nTrvp, apps1Id, apps1) && HasValue(trvp, nTrvp, apps2Id, apps2) &&
+                   HasValue(trvp, nTrvp, wheelFRId, 0) && HasValue(trvp, nTrvp, wheelFLId, 0) &&
+                   HasValue(trvp, nTrvp, wheelRRId, 0) && HasValue(trvp, nTrvp, wheelRLId, 0);
+    bool inverter = (nMain == 3U) && HasValue(main, nMain, inverter_tempId, 40) &&
+                    HasValue(main, nMain, motor_tempId, 40) && HasValue(main, nMain, voltageId, 350);
+    unsigned long rejected = (unsigned long)(canRxStats.unknownId + canRxStats.badDlc);
+    vt_check("AT-a", "-", sensors && inverter && (rejected == 0UL),
+             "trames de l'autotest de la carte -> %u message(s) vers TRVP (%s), %u vers Main (%s), %lu rejetee(s) "
+             "(attendu 6 : APPS a 40 %%, roues a 0 ; 3 : 40 degres, 40 degres, 350 V ; aucun rejet)",
+             nTrvp, sensors ? "bons" : "faux", nMain, inverter ? "bons" : "faux", rejected);
+}
+
 int main(void)
 {
     vt_begin("Code CAN de la carte (fausse HAL)");
@@ -250,6 +307,7 @@ int main(void)
     TestCarte_StartCan();
     TestCarte_TorqueFrameToHal();
     TestCarte_TxRefusedAndExtended();
+    TestCarte_SelfTestFrames();
 
     return vt_end();
 }
