@@ -42,13 +42,15 @@ static void TestCan_TorqueFrame(void)
     EmuDti_SetVoltage(350, 100U);
 
     uint32_t start = EmuNowMs();
+    uint32_t sentBefore = EmuCan_TxCount(CAN_ID_DTI_SET_REL_CURRENT); // ne compter que les trames de ce test
     int value = 0;
     bool positive = false;
     while (!positive && ((EmuNowMs() - start) < 500U))
     {
         EmuWaitMs(5);
         CanFrame_t frame = {0};
-        if (EmuCan_LastTx(CAN_ID_DTI_SET_REL_CURRENT, &frame) && (frame.dlc >= 2U))
+        if ((EmuCan_TxCount(CAN_ID_DTI_SET_REL_CURRENT) > sentBefore) &&
+            EmuCan_LastTx(CAN_ID_DTI_SET_REL_CURRENT, &frame) && (frame.dlc >= 2U))
         {
             value = (int16_t)(((uint16_t)frame.data[0] << 8) | frame.data[1]);
             positive = (value > 0);

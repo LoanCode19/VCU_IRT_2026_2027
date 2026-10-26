@@ -10,6 +10,7 @@
 #include "canIds.h"
 #include "queueHandles.h"
 #include "TaskCanRX.h"
+#include "stm32Interface.h"
 #include "emu.h"
 
 #define EMU_CAN_STACK_DEPTH 256U

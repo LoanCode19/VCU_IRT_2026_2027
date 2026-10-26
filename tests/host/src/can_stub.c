@@ -5,6 +5,7 @@
 #include <stdint.h>
 
 #include "structs.h"
+#include "stm32Interface.h"
 #include "test_can.h"
 
 #define TEST_CAN_MAX_TX 32U

@@ -568,6 +568,21 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
   portYIELD_FROM_ISR(woken); // reveille TaskCanRx tout de suite, sans attendre le prochain tick
 }
 
+// Emission CAN (stm32Interface.h). Renvoie false si les 3 boites d'emission sont pleines : la trame
+// est abandonnee, la suivante partira (la consigne est envoyee en continu).
+bool CanTx_Send(const CanFrame_t *frame)
+{
+  CAN_TxHeaderTypeDef header = {0};
+  uint32_t mailbox;
+  header.IDE = frame->ide ? CAN_ID_EXT : CAN_ID_STD;
+  header.StdId = frame->ide ? 0U : frame->id;
+  header.ExtId = frame->ide ? frame->id : 0U;
+  header.RTR = CAN_RTR_DATA;
+  header.DLC = frame->dlc;
+  header.TransmitGlobalTime = DISABLE;
+  return HAL_CAN_AddTxMessage(&hcan1, &header, frame->data, &mailbox) == HAL_OK;
+}
+
 // Recharge le compteur de l'IWDG (stm32Interface.h). Appelee par TaskWDG, seulement quand
 // toutes les taches surveillees sont a l'heure.
 void refreshIWDG(void)
