@@ -23,14 +23,19 @@ static void Setup(TickType_t now)
     vTestSetTickCount(now);
 }
 
-// Trame standard telle que l'ISR de la carte la remet au VCU, datee de maintenant
-static bool PushFrame(uint32_t canId, uint8_t dlc, const uint8_t data[8])
+// Trame telle que l'ISR de la carte la remet au VCU, datee de maintenant
+static bool PushRawFrame(uint32_t canId, uint8_t ide, uint8_t dlc, const uint8_t data[8])
 {
-    CanFrame_t frame = {.id = canId, .ide = 0U, .dlc = dlc, .rxTick = xTaskGetTickCount()};
+    CanFrame_t frame = {.id = canId, .ide = ide, .dlc = dlc, .rxTick = xTaskGetTickCount()};
     memcpy(frame.data, data, sizeof(frame.data));
     UBaseType_t before = uxTestQueueCount(xCanRxQueue);
     CanRx_OnFrameFromISR(&frame, NULL);
     return uxTestQueueCount(xCanRxQueue) > before;
+}
+
+static bool PushFrame(uint32_t canId, uint8_t dlc, const uint8_t data[8])
+{
+    return PushRawFrame(canId, 0U, dlc, data); // trame standard (ID sur 11 bits)
 }
 
 static void PutBigEndian(uint8_t *dst, uint32_t value, unsigned bytes)
@@ -90,6 +95,35 @@ static bool HasMessage(QueueHandle_t queue, MessageIds appId, int32_t value)
         }
     }
     return found;
+}
+
+#define MAX_DRAINED 16U
+
+// Vide la queue dans msgs (au plus MAX_DRAINED messages) et renvoie le nombre de messages
+static unsigned Drain(QueueHandle_t queue, dataMessage_t msgs[MAX_DRAINED])
+{
+    unsigned n = 0U;
+    dataMessage_t msg = {0};
+    while (xQueueReceive(queue, &msg, 0) == pdPASS)
+    {
+        if (n < MAX_DRAINED)
+        {
+            msgs[n++] = msg;
+        }
+    }
+    return n;
+}
+
+static bool Contains(const dataMessage_t *msgs, unsigned n, MessageIds appId, int32_t value)
+{
+    for (unsigned i = 0; i < n; i++)
+    {
+        if ((msgs[i].id == appId) && (msgs[i].data == value))
+        {
+            return true;
+        }
+    }
+    return false;
 }
 
 static void RunCanRx(void)
@@ -162,6 +196,55 @@ static void TestCanRx_Decoding(void)
              "CanFrame_t transporte %u octets et la longueur (DLC) de la trame (attendu 8 octets + DLC)", dataBytes);
 }
 
+static void TestCanRx_FrameChecks(void)
+{
+    // Trame trop courte : le signal APPS1 occupe 4 octets
+    Setup(100U);
+    static const uint8_t shortApps[8] = {0x00, 0x00, 0x07};
+    (void)PushFrame(CAN_ID_APPS1, 3U, shortApps);
+    RunCanRx();
+    unsigned routed = (unsigned)uxTestQueueCount(xTRVPQueue);
+    vt_check("B6d", "T 11.9.2.d", routed == 0U,
+             "trame APPS1 de 3 octets (4 attendus) -> %u message(s) vers TRVP (attendu 0 : trame rejetee)", routed);
+
+    // Trames de l'onduleur DTI : deux signaux par trame, signes, en 0,1 degre (exemples du manuel DTI)
+    Setup(100U);
+    static const uint8_t temps[8] = {0x01, 0xA4, 0x01, 0xC7, 0x00, 0xFF, 0xFF, 0xFF}; // 42,0 et 45,5 degres
+    static const uint8_t erpmVoltage[8] = {0x00, 0x00, 0x24, 0x5E, 0x00, 0x71, 0x01, 0x86}; // 390 V
+    (void)PushFrame(CAN_ID_DTI_TEMPERATURES, 8U, temps);
+    (void)PushFrame(CAN_ID_DTI_ERPM_VOLTAGE, 8U, erpmVoltage);
+    RunCanRx();
+    dataMessage_t toMain[MAX_DRAINED];
+    dataMessage_t toCooling[MAX_DRAINED];
+    unsigned nMain = Drain(xMainQueue, toMain);
+    unsigned nCooling = Drain(xCoolingQueue, toCooling);
+    bool mainOk = Contains(toMain, nMain, inverter_tempId, 42) && Contains(toMain, nMain, motor_tempId, 46) &&
+                  Contains(toMain, nMain, voltageId, 390);
+    bool coolingOk = Contains(toCooling, nCooling, inverter_tempId, 42) && Contains(toCooling, nCooling, motor_tempId, 46);
+
+    Setup(100U);
+    static const uint8_t coldInverter[8] = {0xFF, 0x9C, 0x00, 0x00, 0x00, 0xFF, 0xFF, 0xFF}; // -10,0 degres
+    (void)PushFrame(CAN_ID_DTI_TEMPERATURES, 8U, coldInverter);
+    RunCanRx();
+    unsigned nCold = Drain(xMainQueue, toMain);
+    bool negativeOk = Contains(toMain, nCold, inverter_tempId, -10);
+    vt_check("B6e", "T 11.9.2.d", mainOk && coolingOk && negativeOk,
+             "trames DTI 0x%03lX et 0x%03lX -> onduleur 42, moteur 46 (45,5 arrondi), tension 390 V : Main %s, "
+             "refroidissement %s ; FF 9C -> -10 degres %s",
+             (unsigned long)CAN_ID_DTI_TEMPERATURES, (unsigned long)CAN_ID_DTI_ERPM_VOLTAGE, mainOk ? "oui" : "non",
+             coolingOk ? "oui" : "non", negativeOk ? "oui" : "non");
+
+    // Trame etendue (29 bits) qui porte le meme numero qu'APPS1 en standard : ce n'est pas APPS1
+    Setup(100U);
+    static const uint8_t value[8] = {0x00, 0x00, 0x07, 0xD0};
+    (void)PushRawFrame(CAN_ID_APPS1, 1U, 4U, value);
+    RunCanRx();
+    routed = (unsigned)uxTestQueueCount(xTRVPQueue);
+    vt_check("B6f", "T 11.9.2.d", routed == 0U,
+             "trame etendue d'ID 0x%03lX (celui d'APPS1 en standard) -> %u message(s) vers TRVP (attendu 0)",
+             (unsigned long)CAN_ID_APPS1, routed);
+}
+
 static void TestCanRx_Overload(void)
 {
     // TRVP en retard : sa queue est pleine quand de nouvelles valeurs APPS arrivent
@@ -188,6 +271,7 @@ int main(void)
     TestCanRx_Timestamp();
     TestCanRx_Routing();
     TestCanRx_Decoding();
+    TestCanRx_FrameChecks();
     TestCanRx_Overload();
 
     return vt_end();
