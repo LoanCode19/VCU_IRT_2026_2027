@@ -16,6 +16,7 @@
 #include <semphr.h>
 
 SemaphoreHandle_t xCanRxSemaphore;
+volatile CanRxStats_t canRxStats = {0};
 
 // Le refroidissement recoit aussi les temperatures. Pointeur NULL : pas de refroidissement
 // (tests qui remplissent CanRxParams_t sans ce champ).

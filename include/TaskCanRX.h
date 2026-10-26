@@ -6,6 +6,14 @@
 
 void TaskCanRx(void *pvParameters);
 
+// Compteurs de la reception CAN, lisibles au debogueur : rien n'est perdu sans etre compte
+typedef struct
+{
+    uint32_t isrErrors; // lecture du FIFO en echec dans l'ISR de la carte
+} CanRxStats_t;
+
+extern volatile CanRxStats_t canRxStats;
+
 // Point d'entree des trames recues, appele par l'ISR de la carte (et par l'emulateur)
 void CanRx_OnFrameFromISR(const CanFrame_t *frame, BaseType_t *higherPriorityTaskWoken);
 
