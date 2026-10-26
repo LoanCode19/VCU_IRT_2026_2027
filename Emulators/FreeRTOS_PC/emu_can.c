@@ -164,17 +164,26 @@ uint32_t EmuCan_DroppedFrames(void)
     return sDroppedFrames;
 }
 
-// Onduleur simule : temperatures du moteur et de l'onduleur, en degres
+// Onduleur simule (trames du DTI, big-endian) : temperatures en 0,1 degre, octets 0-1 onduleur, 2-3 moteur
 void EmuDti_SetTemperatures(int32_t motorC, int32_t inverterC, uint32_t periodMs)
 {
-    EmuCan_SetPeriodic(CAN_ID_MOTOR_TEMP, periodMs, motorC);
-    EmuCan_SetPeriodic(CAN_ID_INVERTER_TEMP, periodMs, inverterC);
+    uint8_t data[8] = {0, 0, 0, 0, 0x00, 0xFF, 0xFF, 0xFF}; // octet 4 : pas de defaut
+    uint32_t inverterRaw = (uint32_t)(inverterC * 10);
+    uint32_t motorRaw = (uint32_t)(motorC * 10);
+    data[0] = (uint8_t)(inverterRaw >> 8);
+    data[1] = (uint8_t)inverterRaw;
+    data[2] = (uint8_t)(motorRaw >> 8);
+    data[3] = (uint8_t)motorRaw;
+    EmuCan_SetPeriodicFrame(CAN_ID_DTI_TEMPERATURES, periodMs, 8U, data);
 }
 
-// Onduleur simule : tension DC, en volts
+// Onduleur simule : tension DC en volts, octets 6-7 de la trame ERPM / rapport cyclique / tension
 void EmuDti_SetVoltage(int32_t volts, uint32_t periodMs)
 {
-    EmuCan_SetPeriodic(CAN_ID_VOLTAGE, periodMs, volts);
+    uint8_t data[8] = {0};
+    data[6] = (uint8_t)((uint32_t)volts >> 8);
+    data[7] = (uint8_t)volts;
+    EmuCan_SetPeriodicFrame(CAN_ID_DTI_ERPM_VOLTAGE, periodMs, 8U, data);
 }
 
 // Toutes les 1 ms : envoie les trames des capteurs simules arrivees a echeance

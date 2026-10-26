@@ -54,6 +54,22 @@ static bool PushValue(uint32_t canId, int32_t value)
     return PushFrame(canId, 4U, data);
 }
 
+// Onduleur DTI : temperatures en 0,1 degre (octets 0-1 onduleur, 2-3 moteur), tension en volts (octets 6-7)
+static bool PushDtiTemperatures(int32_t motorC, int32_t inverterC)
+{
+    uint8_t data[8] = {0};
+    PutBigEndian(&data[0], (uint32_t)(inverterC * 10), 2U);
+    PutBigEndian(&data[2], (uint32_t)(motorC * 10), 2U);
+    return PushFrame(CAN_ID_DTI_TEMPERATURES, 8U, data);
+}
+
+static bool PushDtiVoltage(int32_t volts)
+{
+    uint8_t data[8] = {0};
+    PutBigEndian(&data[6], (uint32_t)volts, 2U);
+    return PushFrame(CAN_ID_DTI_ERPM_VOLTAGE, 8U, data);
+}
+
 // Un signal du VCU, dans la trame qui le transporte sur le bus
 static bool PushSignal(MessageIds appId, int32_t value)
 {
@@ -72,11 +88,11 @@ static bool PushSignal(MessageIds appId, int32_t value)
     case apps2Id:
         return PushValue(CAN_ID_APPS2, value);
     case motor_tempId:
-        return PushValue(CAN_ID_MOTOR_TEMP, value);
+        return PushDtiTemperatures(value, 0);
     case inverter_tempId:
-        return PushValue(CAN_ID_INVERTER_TEMP, value);
+        return PushDtiTemperatures(0, value);
     case voltageId:
-        return PushValue(CAN_ID_VOLTAGE, value);
+        return PushDtiVoltage(value);
     default:
         return false;
     }
@@ -245,6 +261,41 @@ static void TestCanRx_FrameChecks(void)
              (unsigned long)CAN_ID_APPS1, routed);
 }
 
+static void TestCanRx_Table(void)
+{
+    // En ID standard, aucune trame d'une autre carte dans les plages de l'onduleur DTI
+    bool ok = (DTI_NODE_ID >= 1U) && (DTI_NODE_ID <= 30U);
+    for (unsigned i = 0; i < canRxTableSize; i++)
+    {
+        uint32_t id = canRxTable[i].id;
+        uint32_t packet = id >> 5;
+        bool fromDti = ((id & 0x1FU) == DTI_NODE_ID) && (packet >= 0x1FU) && (packet <= 0x26U);
+        bool inDtiRanges = ((id >= 0x020U) && (id <= 0x19FU)) || ((id >= 0x3E0U) && (id <= 0x4DFU));
+        if (!fromDti && inDtiRanges)
+        {
+            ok = false;
+            vt_note("ID 0x%03lX dans une plage du DTI", (unsigned long)id);
+        }
+    }
+    vt_check("B6g", "-", ok,
+             "%u signaux dans la table : aucun ID d'une autre carte dans 0x020-0x19F ni 0x3E0-0x4DF (onduleur n. %u)",
+             canRxTableSize, (unsigned)DTI_NODE_ID);
+
+    // Trames rejetees : comptees, jamais perdues en silence
+    Setup(100U);
+    CanRxStats_t before = canRxStats;
+    static const uint8_t value[8] = {0x00, 0x00, 0x07, 0xD0};
+    (void)PushFrame(0x7FFU, 4U, value);            // ID inconnu
+    (void)PushRawFrame(CAN_ID_APPS1, 1U, 4U, value); // trame etendue
+    (void)PushFrame(CAN_ID_APPS1, 3U, value);      // trop courte
+    RunCanRx();
+    unsigned long unknown = (unsigned long)(canRxStats.unknownId - before.unknownId);
+    unsigned long shortFrames = (unsigned long)(canRxStats.badDlc - before.badDlc);
+    vt_check("B6h", "T 11.9.2.d", (unknown == 2UL) && (shortFrames == 1UL),
+             "trame inconnue, trame etendue, trame trop courte -> unknownId +%lu (attendu 2), badDlc +%lu (attendu 1)",
+             unknown, shortFrames);
+}
+
 static void TestCanRx_Overload(void)
 {
     // TRVP en retard : sa queue est pleine quand de nouvelles valeurs APPS arrivent
@@ -272,6 +323,7 @@ int main(void)
     TestCanRx_Routing();
     TestCanRx_Decoding();
     TestCanRx_FrameChecks();
+    TestCanRx_Table();
     TestCanRx_Overload();
 
     return vt_end();
