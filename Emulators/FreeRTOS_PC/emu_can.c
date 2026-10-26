@@ -26,6 +26,17 @@ typedef struct
 } EmuCanSignal_t;
 
 static EmuCanSignal_t sSignals[EMU_CAN_MAX_SIGNALS];
+
+#define EMU_CAN_MAX_TX_IDS 8U
+
+typedef struct
+{
+    bool used;
+    uint32_t count;
+    CanFrame_t last;
+} EmuCanTx_t;
+
+static EmuCanTx_t sTxFrames[EMU_CAN_MAX_TX_IDS];
 static volatile uint32_t sDroppedFrames = 0;
 
 static StaticTask_t sBusTaskTcb;
@@ -164,6 +175,67 @@ uint32_t EmuCan_DroppedFrames(void)
     return sDroppedFrames;
 }
 
+// Emission (stm32Interface.h) : sur la carte, la trame part sur le bus ; ici, elle est enregistree
+bool CanTx_Send(const CanFrame_t *frame)
+{
+    taskENTER_CRITICAL();
+    EmuCanTx_t *slot = NULL;
+    for (unsigned i = 0; (i < EMU_CAN_MAX_TX_IDS) && (slot == NULL); i++)
+    {
+        if (sTxFrames[i].used && (sTxFrames[i].last.id == frame->id))
+        {
+            slot = &sTxFrames[i];
+        }
+    }
+    for (unsigned i = 0; (i < EMU_CAN_MAX_TX_IDS) && (slot == NULL); i++)
+    {
+        if (!sTxFrames[i].used)
+        {
+            slot = &sTxFrames[i];
+            slot->used = true;
+            slot->count = 0U;
+        }
+    }
+    if (slot != NULL)
+    {
+        slot->count++;
+        slot->last = *frame;
+    }
+    taskEXIT_CRITICAL();
+    return true;
+}
+
+uint32_t EmuCan_TxCount(uint32_t stdId)
+{
+    uint32_t count = 0U;
+    taskENTER_CRITICAL();
+    for (unsigned i = 0; i < EMU_CAN_MAX_TX_IDS; i++)
+    {
+        if (sTxFrames[i].used && (sTxFrames[i].last.id == stdId))
+        {
+            count = sTxFrames[i].count;
+        }
+    }
+    taskEXIT_CRITICAL();
+    return count;
+}
+
+bool EmuCan_LastTx(uint32_t stdId, CanFrame_t *frame)
+{
+    bool found = false;
+    taskENTER_CRITICAL();
+    for (unsigned i = 0; i < EMU_CAN_MAX_TX_IDS; i++)
+    {
+        if (sTxFrames[i].used && (sTxFrames[i].last.id == stdId))
+        {
+            *frame = sTxFrames[i].last;
+            found = true;
+        }
+    }
+    taskEXIT_CRITICAL();
+    return found;
+}
+
 // Onduleur simule (trames du DTI, big-endian) : temperatures en 0,1 degre, octets 0-1 onduleur, 2-3 moteur
 void EmuDti_SetTemperatures(int32_t motorC, int32_t inverterC, uint32_t periodMs)
 {
@@ -223,6 +295,10 @@ void EmuCan_Init(void)
     for (unsigned i = 0; i < EMU_CAN_MAX_SIGNALS; i++)
     {
         sSignals[i].used = false;
+    }
+    for (unsigned i = 0; i < EMU_CAN_MAX_TX_IDS; i++)
+    {
+        sTxFrames[i].used = false;
     }
     (void)xTaskCreateStatic(EmuCan_BusTask, "EMU_CAN", EMU_CAN_STACK_DEPTH, NULL,
                             configMAX_PRIORITIES - 1, sBusTaskStack, &sBusTaskTcb);

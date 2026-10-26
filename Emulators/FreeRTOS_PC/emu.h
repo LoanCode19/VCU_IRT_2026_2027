@@ -15,6 +15,8 @@
 #include "task.h"
 #include "queue.h"
 
+#include "structs.h"
+
 #ifdef VCU_TEST_H
 #error "Inclure emu.h avant vcu_test.h (les resultats doivent passer par le mutex de la console)"
 #endif
@@ -53,6 +55,10 @@ uint32_t EmuCan_DroppedFrames(void);
 
 // Appele par main_pc.c avant MainApp() : cree la tache "bus CAN" (1 ms, priorite max).
 void EmuCan_Init(void);
+
+// Trames emises par le VCU (CanTx_Send) depuis le demarrage : nombre, et derniere trame de cet ID
+uint32_t EmuCan_TxCount(uint32_t stdId);
+bool EmuCan_LastTx(uint32_t stdId, CanFrame_t *frame);
 
 // Onduleur simule : ses trames periodiques, dans le format que le VCU attend
 void EmuDti_SetTemperatures(int32_t motorC, int32_t inverterC, uint32_t periodMs);
