@@ -3,6 +3,7 @@
 
 #include "structs.h"
 #include "canIds.h"
+#include "queueHandles.h"
 #include "utils.h"
 #include "project_config.h"
 
@@ -26,6 +27,23 @@ static void SendToCooling(QueueHandle_t *xCoolingQueue, const dataMessage_t *msg
     }
 }
 
+// Les trames portent leurs valeurs en big-endian (format provisoire : 4 octets en tete)
+static uint32_t ReadBigEndian32(const uint8_t *data)
+{
+    return ((uint32_t)data[0] << 24) | ((uint32_t)data[1] << 16) | ((uint32_t)data[2] << 8) | data[3];
+}
+
+// Appelee par l'ISR de reception de la carte (et par l'emulateur) : depose la trame pour TaskCanRx.
+// Contexte d'interruption : ni attente ni printf.
+void CanRx_OnFrameFromISR(const CanFrame_t *frame, BaseType_t *higherPriorityTaskWoken)
+{
+    if (xCanRxQueue == NULL)
+    {
+        return; // queues pas encore creees par MainApp()
+    }
+    (void)xQueueSendFromISR(xCanRxQueue, frame, higherPriorityTaskWoken);
+}
+
 void TaskCanRx(void *pvParameters)
 {
     CanRxParams_t *params = (CanRxParams_t *)pvParameters;
@@ -42,18 +60,18 @@ void TaskCanRx(void *pvParameters)
     {
 
         dataMessage_t appMsg = {0, 0};
-        dataCan canMsg = {0};
+        CanFrame_t frame = {0};
 
-        xQueuePeek(*xCanRxQueue, &canMsg, CAN_RX_TIMEOUT);
+        xQueuePeek(*xCanRxQueue, &frame, CAN_RX_TIMEOUT);
         console_print("------(B)CanRx------\n");
 
         // Envoyer à la queue appropriée selon l'ID avec switch
-        while ((xQueueReceive(*xCanRxQueue, &canMsg, pdMS_TO_TICKS(0))) == pdPASS)
+        while ((xQueueReceive(*xCanRxQueue, &frame, pdMS_TO_TICKS(0))) == pdPASS)
         {
-            appMsg.data = canMsg.data;
-            appMsg.timestamp = xTaskGetTickCount();
+            appMsg.data = (int32_t)ReadBigEndian32(frame.data);
+            appMsg.timestamp = frame.rxTick; // heure de reception (B1)
 
-            switch (canMsg.id)
+            switch (frame.id)
             {
             // Wheel speeds went to Main Task
             case CAN_ID_WHEEL_FR:

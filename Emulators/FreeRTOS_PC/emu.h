@@ -29,9 +29,8 @@ int EmuTest_Run(void);
 // ----------------------------------------------------------------------------------------------
 // Bus CAN simule (emu_can.c)
 //
-// Les trames passent par EmuCan_DeliverFrame(), copie de l'ISR de reception de la carte
-// (HAL_CAN_RxFifo0MsgPendingCallback dans VCU_STM32F407/Core/Src/main.c) : meme conversion,
-// meme queue. A garder synchronisee avec l'ISR quand celle-ci change.
+// Les trames sont remises a CanRx_OnFrameFromISR(), le point d'entree que l'ISR de reception
+// de la carte appelle aussi (HAL_CAN_RxFifo0MsgPendingCallback dans VCU_STM32F407/Core/Src/main.c).
 
 #define EMU_CAN_MAX_SIGNALS 16U
 
@@ -49,7 +48,7 @@ void EmuCan_SetValue(uint32_t stdId, int32_t value);
 void EmuCan_Mute(uint32_t stdId, bool muted); // panne : le capteur se tait (fil coupe, ECU en defaut)
 void EmuCan_StopAll(void);
 
-// Trames que l'ISR n'a pas pu deposer (queue de reception pleine) depuis le debut du test.
+// Trames arrivees alors que la queue de reception etait pleine, depuis le debut du test.
 uint32_t EmuCan_DroppedFrames(void);
 
 // Appele par main_pc.c avant MainApp() : cree la tache "bus CAN" (1 ms, priorite max).

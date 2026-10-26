@@ -2,7 +2,12 @@
 #ifndef CAN_RX_H
 #define CAN_RX_H
 
+#include "structs.h"
+
 void TaskCanRx(void *pvParameters);
+
+// Point d'entree des trames recues, appele par l'ISR de la carte (et par l'emulateur)
+void CanRx_OnFrameFromISR(const CanFrame_t *frame, BaseType_t *higherPriorityTaskWoken);
 
 extern SemaphoreHandle_t xCanRxSemaphore;
 

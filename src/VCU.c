@@ -48,7 +48,7 @@ void MainApp(void)
     configASSERT(xIHMQueue != NULL);
     xCanTxQueue = xQueueCreate(10, sizeof(dataMessage_t));
     configASSERT(xCanTxQueue != NULL);
-    xCanRxQueue = xQueueCreate(10, sizeof(dataCan));
+    xCanRxQueue = xQueueCreate(10, sizeof(CanFrame_t));
     configASSERT(xCanRxQueue != NULL);
     xWDGQueue = xQueueCreate(10, sizeof(WdgMessage_t));
     configASSERT(xWDGQueue != NULL);

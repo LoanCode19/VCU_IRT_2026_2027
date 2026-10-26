@@ -4,6 +4,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include <string.h>
 
 #include "structs.h"
 #include "canIds.h"
@@ -22,15 +23,14 @@ static void Setup(TickType_t now)
     vTestSetTickCount(now);
 }
 
-// Trame telle que l'ISR de VCU_STM32F407/Core/Src/main.c la depose aujourd'hui :
-// seuls les 4 premiers octets passent, et la longueur est perdue (B6)
+// Trame standard telle que l'ISR de la carte la remet au VCU, datee de maintenant
 static bool PushFrame(uint32_t canId, uint8_t dlc, const uint8_t data[8])
 {
-    dataCan frame = {0};
-    frame.id = canId; // uint8_t : un ID sur 11 bits est tronque ici (B6)
-    (void)dlc;
-    frame.data = ((uint32_t)data[0] << 24) | ((uint32_t)data[1] << 16) | ((uint32_t)data[2] << 8) | data[3];
-    return xQueueSendFromISR(xCanRxQueue, &frame, NULL) == pdPASS;
+    CanFrame_t frame = {.id = canId, .ide = 0U, .dlc = dlc, .rxTick = xTaskGetTickCount()};
+    memcpy(frame.data, data, sizeof(frame.data));
+    UBaseType_t before = uxTestQueueCount(xCanRxQueue);
+    CanRx_OnFrameFromISR(&frame, NULL);
+    return uxTestQueueCount(xCanRxQueue) > before;
 }
 
 static void PutBigEndian(uint8_t *dst, uint32_t value, unsigned bytes)
@@ -154,12 +154,12 @@ static void TestCanRx_Decoding(void)
              "trame d'ID 0x%03lX (inconnue) -> %u message(s) transmis (attendu 0 ; tronque a 8 bits, l'ID est celui de APPS1)",
              (unsigned long)aliasId, (unsigned)forwarded);
 
-    unsigned idBits = (unsigned)(sizeof(((dataCan *)0)->id) * 8U);
-    vt_check("B6b", "-", idBits >= 11U, "dataCan.id sur %u bits (attendu >= 11 pour un ID standard)", idBits);
+    unsigned idBits = (unsigned)(sizeof(((CanFrame_t *)0)->id) * 8U);
+    vt_check("B6b", "-", idBits >= 11U, "CanFrame_t.id sur %u bits (attendu >= 11 pour un ID standard)", idBits);
 
-    unsigned dataBytes = (unsigned)sizeof(((dataCan *)0)->data);
+    unsigned dataBytes = (unsigned)sizeof(((CanFrame_t *)0)->data);
     vt_check("B6c", "T 11.9.2.d", dataBytes >= 8U,
-             "dataCan transporte %u octets et pas de DLC (attendu 8 octets + DLC verifie)", dataBytes);
+             "CanFrame_t transporte %u octets et la longueur (DLC) de la trame (attendu 8 octets + DLC)", dataBytes);
 }
 
 static void TestCanRx_Overload(void)

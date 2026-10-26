@@ -28,6 +28,7 @@
 #include "structs.h"
 #include "queueHandles.h"
 #include "stm32Interface.h"
+#include "TaskCanRX.h"
 
 /* USER CODE END Includes */
 
@@ -555,18 +556,17 @@ static void MX_GPIO_Init(void)
 void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
 {
   // console_print("CAN RX FIFO 0 message pending callback triggered\n");
-  if (HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO0, &RxHeader, RxData) != HAL_OK)
+  CanFrame_t frame = {0};
+  if (HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO0, &RxHeader, frame.data) != HAL_OK)
   {
     /* Reception Error */
     Error_Handler();
   }
-  dataCan canMsg = {0};
-  canMsg.id = RxHeader.StdId;
-  canMsg.data = (RxData[0] << 24) | (RxData[1] << 16) | (RxData[2] << 8) | RxData[3];
-  if (xQueueSendFromISR(xCanRxQueue, &canMsg, NULL) != pdPASS)
-  {
-    // console_print("Failed to send CAN message to queue\n");
-  }
+  frame.ide = (RxHeader.IDE == CAN_ID_EXT) ? 1U : 0U;
+  frame.id = frame.ide ? RxHeader.ExtId : RxHeader.StdId;
+  frame.dlc = (uint8_t)RxHeader.DLC;
+  frame.rxTick = xTaskGetTickCountFromISR();
+  CanRx_OnFrameFromISR(&frame, NULL);
 }
 
 // Recharge le compteur de l'IWDG (stm32Interface.h). Appelee par TaskWDG, seulement quand

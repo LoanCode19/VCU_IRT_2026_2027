@@ -9,6 +9,7 @@
 #include "structs.h"
 #include "canIds.h"
 #include "queueHandles.h"
+#include "TaskCanRX.h"
 #include "emu.h"
 
 #define EMU_CAN_STACK_DEPTH 256U
@@ -30,20 +31,32 @@ static volatile uint32_t sDroppedFrames = 0;
 static StaticTask_t sBusTaskTcb;
 static StackType_t sBusTaskStack[EMU_CAN_STACK_DEPTH];
 
-// Copie de HAL_CAN_RxFifo0MsgPendingCallback (VCU_STM32F407/Core/Src/main.c) : meme conversion,
-// meme queue. L'ISR est remplacee par la tache "bus CAN", de priorite maximale.
+// Comme l'ISR de reception de la carte : la trame est remise a CanRx_OnFrameFromISR(), le meme
+// point d'entree que sur la carte. L'appelant est une tache (bus CAN ou test) : la section critique
+// joue le role de l'interruption, aucune tache ne peut s'intercaler pendant le depot.
 static bool EmuCan_DeliverFrame(uint32_t stdId, uint8_t dlc, const uint8_t data[8])
 {
-    dataCan canMsg = {0};
-    (void)dlc;         // l'ISR ne garde pas la longueur (probleme B6)
-    canMsg.id = stdId; // tronque comme dans l'ISR (dataCan.id est un uint8_t, probleme B6)
-    canMsg.data = ((uint32_t)data[0] << 24) | ((uint32_t)data[1] << 16) | ((uint32_t)data[2] << 8) | data[3];
-    if (xQueueSend(xCanRxQueue, &canMsg, 0) != pdPASS)
+    CanFrame_t frame = {0};
+    frame.id = stdId;
+    frame.ide = 0U;
+    frame.dlc = dlc;
+    memcpy(frame.data, data, sizeof(frame.data));
+    frame.rxTick = xTaskGetTickCount();
+
+    BaseType_t woken = pdFALSE;
+    taskENTER_CRITICAL();
+    bool full = (uxQueueSpacesAvailable(xCanRxQueue) == 0U);
+    CanRx_OnFrameFromISR(&frame, &woken);
+    taskEXIT_CRITICAL();
+    if (woken == pdTRUE)
     {
-        sDroppedFrames++;
-        return false;
+        taskYIELD();
     }
-    return true;
+    if (full)
+    {
+        sDroppedFrames++; // trame perdue (ou qui a pris la place d'une plus ancienne)
+    }
+    return !full;
 }
 
 // Format provisoire des capteurs : la valeur sur les 4 premiers octets, big-endian
