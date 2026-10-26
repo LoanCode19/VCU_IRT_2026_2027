@@ -54,7 +54,7 @@ static void FeedCanRx(TickType_t now)
 static void Setup(void)
 {
     xWDGQueue = xQueueCreate(10, sizeof(WdgMessage_t));
-    xCanRxQueue = xQueueCreate(10, sizeof(dataCan));
+    xCanRxQueue = xQueueCreate(10, sizeof(CanFrame_t));
     xTRVPQueue = xQueueCreate(10, sizeof(dataMessage_t));
     xMainQueue = xQueueCreate(10, sizeof(dataMessage_t));
     memset(wdgTimeoutTable, 0, sizeof(WDGTimoutTable));

@@ -1,12 +1,16 @@
 #include <stdbool.h>
 #include <stdint.h>
+#include <string.h>
 
 #include "FreeRTOS.h"
 #include "task.h"
 #include "queue.h"
 
 #include "structs.h"
+#include "canIds.h"
 #include "queueHandles.h"
+#include "TaskCanRX.h"
+#include "stm32Interface.h"
 #include "emu.h"
 
 #define EMU_CAN_STACK_DEPTH 256U
@@ -17,39 +21,76 @@ typedef struct
     bool muted;
     uint32_t stdId;
     uint32_t periodMs;
-    int32_t value;
+    uint8_t dlc;
+    uint8_t data[8];
     TickType_t nextSend;
 } EmuCanSignal_t;
 
 static EmuCanSignal_t sSignals[EMU_CAN_MAX_SIGNALS];
+
+#define EMU_CAN_MAX_TX_IDS 8U
+
+typedef struct
+{
+    bool used;
+    uint32_t count;
+    CanFrame_t last;
+} EmuCanTx_t;
+
+static EmuCanTx_t sTxFrames[EMU_CAN_MAX_TX_IDS];
 static volatile uint32_t sDroppedFrames = 0;
 
 static StaticTask_t sBusTaskTcb;
 static StackType_t sBusTaskStack[EMU_CAN_STACK_DEPTH];
 
-// Copie de HAL_CAN_RxFifo0MsgPendingCallback (VCU_STM32F407/Core/Src/main.c) : meme conversion,
-// meme queue. L'ISR est remplacee par la tache "bus CAN", de priorite maximale.
-static bool EmuCan_DeliverFrame(uint32_t stdId, const uint8_t data[8])
+// Comme l'ISR de reception de la carte : la trame est remise a CanRx_OnFrameFromISR(), le meme
+// point d'entree que sur la carte. L'appelant est une tache (bus CAN ou test) : la section critique
+// joue le role de l'interruption, aucune tache ne peut s'intercaler pendant le depot.
+static bool EmuCan_DeliverFrame(uint32_t stdId, uint8_t dlc, const uint8_t data[8])
 {
-    dataCan canMsg = {0};
-    canMsg.id = stdId; // tronque comme dans l'ISR (dataCan.id est un uint8_t, probleme B6)
-    canMsg.data = ((uint32_t)data[0] << 24) | ((uint32_t)data[1] << 16) | ((uint32_t)data[2] << 8) | data[3];
-    if (xQueueSend(xCanRxQueue, &canMsg, 0) != pdPASS)
+    CanFrame_t frame = {0};
+    frame.id = stdId;
+    frame.ide = 0U;
+    frame.dlc = dlc;
+    memcpy(frame.data, data, sizeof(frame.data));
+    frame.rxTick = xTaskGetTickCount();
+
+    BaseType_t woken = pdFALSE;
+    taskENTER_CRITICAL();
+    bool full = (uxQueueSpacesAvailable(xCanRxQueue) == 0U);
+    CanRx_OnFrameFromISR(&frame, &woken);
+    taskEXIT_CRITICAL();
+    if (woken == pdTRUE)
     {
-        sDroppedFrames++;
-        return false;
+        taskYIELD();
     }
-    return true;
+    if (full)
+    {
+        sDroppedFrames++; // trame perdue (ou qui a pris la place d'une plus ancienne)
+    }
+    return !full;
 }
 
-bool EmuCan_SendNow(uint32_t stdId, int32_t value)
+// Format provisoire des capteurs : la valeur sur les 4 premiers octets, big-endian
+static void EncodeValue(int32_t value, uint8_t data[8])
 {
-    uint8_t data[8] = {0};
+    memset(data, 0, 8U);
     data[0] = (uint8_t)((uint32_t)value >> 24);
     data[1] = (uint8_t)((uint32_t)value >> 16);
     data[2] = (uint8_t)((uint32_t)value >> 8);
     data[3] = (uint8_t)value;
-    return EmuCan_DeliverFrame(stdId, data);
+}
+
+bool EmuCan_SendFrame(uint32_t stdId, uint8_t dlc, const uint8_t data[8])
+{
+    return EmuCan_DeliverFrame(stdId, dlc, data);
+}
+
+bool EmuCan_SendNow(uint32_t stdId, int32_t value)
+{
+    uint8_t data[8];
+    EncodeValue(value, data);
+    return EmuCan_DeliverFrame(stdId, 4U, data);
 }
 
 static EmuCanSignal_t *FindSignal(uint32_t stdId, bool create)
@@ -75,25 +116,35 @@ static EmuCanSignal_t *FindSignal(uint32_t stdId, bool create)
     return NULL;
 }
 
-void EmuCan_SetPeriodic(uint32_t stdId, uint32_t periodMs, int32_t value)
+void EmuCan_SetPeriodicFrame(uint32_t stdId, uint32_t periodMs, uint8_t dlc, const uint8_t data[8])
 {
     taskENTER_CRITICAL();
     EmuCanSignal_t *signal = FindSignal(stdId, true);
     configASSERT(signal != NULL); // plus de EMU_CAN_MAX_SIGNALS capteurs simules
     signal->periodMs = (periodMs == 0U) ? 1U : periodMs;
-    signal->value = value;
+    signal->dlc = dlc;
+    memcpy(signal->data, data, sizeof(signal->data));
     signal->muted = false;
     signal->nextSend = xTaskGetTickCount();
     taskEXIT_CRITICAL();
 }
 
+void EmuCan_SetPeriodic(uint32_t stdId, uint32_t periodMs, int32_t value)
+{
+    uint8_t data[8];
+    EncodeValue(value, data);
+    EmuCan_SetPeriodicFrame(stdId, periodMs, 4U, data);
+}
+
 void EmuCan_SetValue(uint32_t stdId, int32_t value)
 {
+    uint8_t data[8];
+    EncodeValue(value, data);
     taskENTER_CRITICAL();
     EmuCanSignal_t *signal = FindSignal(stdId, false);
     if (signal != NULL)
     {
-        signal->value = value;
+        memcpy(signal->data, data, sizeof(signal->data));
     }
     taskEXIT_CRITICAL();
 }
@@ -125,6 +176,89 @@ uint32_t EmuCan_DroppedFrames(void)
     return sDroppedFrames;
 }
 
+// Emission (stm32Interface.h) : sur la carte, la trame part sur le bus ; ici, elle est enregistree
+bool CanTx_Send(const CanFrame_t *frame)
+{
+    taskENTER_CRITICAL();
+    EmuCanTx_t *slot = NULL;
+    for (unsigned i = 0; (i < EMU_CAN_MAX_TX_IDS) && (slot == NULL); i++)
+    {
+        if (sTxFrames[i].used && (sTxFrames[i].last.id == frame->id))
+        {
+            slot = &sTxFrames[i];
+        }
+    }
+    for (unsigned i = 0; (i < EMU_CAN_MAX_TX_IDS) && (slot == NULL); i++)
+    {
+        if (!sTxFrames[i].used)
+        {
+            slot = &sTxFrames[i];
+            slot->used = true;
+            slot->count = 0U;
+        }
+    }
+    if (slot != NULL)
+    {
+        slot->count++;
+        slot->last = *frame;
+    }
+    taskEXIT_CRITICAL();
+    return true;
+}
+
+uint32_t EmuCan_TxCount(uint32_t stdId)
+{
+    uint32_t count = 0U;
+    taskENTER_CRITICAL();
+    for (unsigned i = 0; i < EMU_CAN_MAX_TX_IDS; i++)
+    {
+        if (sTxFrames[i].used && (sTxFrames[i].last.id == stdId))
+        {
+            count = sTxFrames[i].count;
+        }
+    }
+    taskEXIT_CRITICAL();
+    return count;
+}
+
+bool EmuCan_LastTx(uint32_t stdId, CanFrame_t *frame)
+{
+    bool found = false;
+    taskENTER_CRITICAL();
+    for (unsigned i = 0; i < EMU_CAN_MAX_TX_IDS; i++)
+    {
+        if (sTxFrames[i].used && (sTxFrames[i].last.id == stdId))
+        {
+            *frame = sTxFrames[i].last;
+            found = true;
+        }
+    }
+    taskEXIT_CRITICAL();
+    return found;
+}
+
+// Onduleur simule (trames du DTI, big-endian) : temperatures en 0,1 degre, octets 0-1 onduleur, 2-3 moteur
+void EmuDti_SetTemperatures(int32_t motorC, int32_t inverterC, uint32_t periodMs)
+{
+    uint8_t data[8] = {0, 0, 0, 0, 0x00, 0xFF, 0xFF, 0xFF}; // octet 4 : pas de defaut
+    uint32_t inverterRaw = (uint32_t)(inverterC * 10);
+    uint32_t motorRaw = (uint32_t)(motorC * 10);
+    data[0] = (uint8_t)(inverterRaw >> 8);
+    data[1] = (uint8_t)inverterRaw;
+    data[2] = (uint8_t)(motorRaw >> 8);
+    data[3] = (uint8_t)motorRaw;
+    EmuCan_SetPeriodicFrame(CAN_ID_DTI_TEMPERATURES, periodMs, 8U, data);
+}
+
+// Onduleur simule : tension DC en volts, octets 6-7 de la trame ERPM / rapport cyclique / tension
+void EmuDti_SetVoltage(int32_t volts, uint32_t periodMs)
+{
+    uint8_t data[8] = {0};
+    data[6] = (uint8_t)((uint32_t)volts >> 8);
+    data[7] = (uint8_t)volts;
+    EmuCan_SetPeriodicFrame(CAN_ID_DTI_ERPM_VOLTAGE, periodMs, 8U, data);
+}
+
 // Toutes les 1 ms : envoie les trames des capteurs simules arrivees a echeance
 static void EmuCan_BusTask(void *pvParameters)
 {
@@ -149,7 +283,7 @@ static void EmuCan_BusTask(void *pvParameters)
 
             if (due)
             {
-                (void)EmuCan_SendNow(signal.stdId, signal.value);
+                (void)EmuCan_DeliverFrame(signal.stdId, signal.dlc, signal.data);
             }
         }
     }
@@ -162,6 +296,10 @@ void EmuCan_Init(void)
     for (unsigned i = 0; i < EMU_CAN_MAX_SIGNALS; i++)
     {
         sSignals[i].used = false;
+    }
+    for (unsigned i = 0; i < EMU_CAN_MAX_TX_IDS; i++)
+    {
+        sTxFrames[i].used = false;
     }
     (void)xTaskCreateStatic(EmuCan_BusTask, "EMU_CAN", EMU_CAN_STACK_DEPTH, NULL,
                             configMAX_PRIORITIES - 1, sBusTaskStack, &sBusTaskTcb);

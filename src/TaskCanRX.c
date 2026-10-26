@@ -2,6 +2,8 @@
 #include "queue.h"
 
 #include "structs.h"
+#include "canIds.h"
+#include "queueHandles.h"
 #include "utils.h"
 #include "project_config.h"
 
@@ -14,22 +16,37 @@
 #include <semphr.h>
 
 SemaphoreHandle_t xCanRxSemaphore;
+volatile CanRxStats_t canRxStats = {0};
 
-typedef enum canIds
+// Table de decodage (lot 4, valeurs du 26/10/2026) : une ligne par signal. Une trame peut porter
+// plusieurs signaux (temperatures du DTI). Seules les trames standard (ID sur 11 bits) sont lues.
+const CanRxSignal_t canRxTable[] = {
+    // Capteurs, format provisoire jusqu'au DBC (D6) : une valeur de 4 octets en tete de trame
+    {CAN_ID_WHEEL_FR, 0U, 4U, true, 1, wheelFRId, CAN_TO_TRVP},
+    {CAN_ID_WHEEL_FL, 0U, 4U, true, 1, wheelFLId, CAN_TO_TRVP},
+    {CAN_ID_WHEEL_RR, 0U, 4U, true, 1, wheelRRId, CAN_TO_TRVP},
+    {CAN_ID_WHEEL_RL, 0U, 4U, true, 1, wheelRLId, CAN_TO_TRVP},
+    {CAN_ID_APPS1, 0U, 4U, true, 1, apps1Id, CAN_TO_TRVP},
+    {CAN_ID_APPS2, 0U, 4U, true, 1, apps2Id, CAN_TO_TRVP},
+    // Onduleur DTI HV-550 (DTI CAN manual V2.5) : temperatures en 0,1 degre, tension en volts
+    {CAN_ID_DTI_TEMPERATURES, 0U, 2U, true, 10, inverter_tempId, CAN_TO_MAIN_AND_COOLING},
+    {CAN_ID_DTI_TEMPERATURES, 2U, 2U, true, 10, motor_tempId, CAN_TO_MAIN_AND_COOLING},
+    {CAN_ID_DTI_ERPM_VOLTAGE, 6U, 2U, true, 1, voltageId, CAN_TO_MAIN},
+};
+const unsigned canRxTableSize = sizeof(canRxTable) / sizeof(canRxTable[0]);
+
+// Depose le message sans attendre. Queue pleine : le plus ancien laisse sa place et la perte est
+// comptee (T13). Sur sans section critique : TaskCanRx est plus prioritaire que les taches qui lisent.
+static void SendLatest(QueueHandle_t queue, const dataMessage_t *msg, volatile uint32_t *lost)
 {
-    CAN_wheelFRId = 0x20,
-    CAN_wheelFLId = 0x21,
-    CAN_wheelRRId = 0x22,
-    CAN_wheelRLId = 0x23,
-
-    CAN_apps1Id = 0x30,
-    CAN_apps2Id = 0x31,
-
-    CAN_motor_tempId = 0x40,
-    CAN_inverter_tempId = 0x41,
-    CAN_voltageId = 0x42,
-
-} CanIds;
+    if (xQueueSend(queue, msg, 0) != pdPASS)
+    {
+        dataMessage_t oldest;
+        (void)xQueueReceive(queue, &oldest, 0);
+        (void)xQueueSend(queue, msg, 0);
+        (*lost)++;
+    }
+}
 
 // Le refroidissement recoit aussi les temperatures. Pointeur NULL : pas de refroidissement
 // (tests qui remplissent CanRxParams_t sans ce champ).
@@ -37,84 +54,129 @@ static void SendToCooling(QueueHandle_t *xCoolingQueue, const dataMessage_t *msg
 {
     if ((xCoolingQueue != NULL) && (*xCoolingQueue != NULL))
     {
-        xQueueSend(*xCoolingQueue, msg, pdMS_TO_TICKS(5));
+        SendLatest(*xCoolingQueue, msg, &canRxStats.lostCooling);
+    }
+}
+
+// Extrait un signal d'apres sa ligne de table. Renvoie false si la trame est trop courte.
+static bool DecodeSignal(const CanFrame_t *frame, const CanRxSignal_t *signal, int32_t *value)
+{
+    if (frame->dlc < (uint8_t)(signal->startByte + signal->length))
+    {
+        return false;
+    }
+
+    uint32_t raw = 0U;
+    for (uint8_t i = 0U; i < signal->length; i++)
+    {
+        raw = (raw << 8) | frame->data[signal->startByte + i]; // big-endian
+    }
+
+    int32_t decoded = (int32_t)raw;
+    if (signal->isSigned && (signal->length < 4U))
+    {
+        uint32_t signBit = 1UL << ((8U * signal->length) - 1U);
+        decoded = (int32_t)(raw ^ signBit) - (int32_t)signBit; // extension de signe
+    }
+    if (signal->divisor > 1)
+    {
+        // Arrondi au plus proche, la moitie s'eloignant de zero : 45,5 -> 46, -45,5 -> -46
+        decoded = (decoded >= 0) ? ((decoded + (signal->divisor / 2)) / signal->divisor)
+                                 : ((decoded - (signal->divisor / 2)) / signal->divisor);
+    }
+    *value = decoded;
+    return true;
+}
+
+static void RouteMessage(const CanRxParams_t *params, CanRoute_t route, const dataMessage_t *msg)
+{
+    if (route == CAN_TO_TRVP)
+    {
+        SendLatest(*params->xTRVPQueue, msg, &canRxStats.lostTrvp);
+        return;
+    }
+    SendLatest(*params->xMainQueue, msg, &canRxStats.lostMain);
+    if (route == CAN_TO_MAIN_AND_COOLING)
+    {
+        SendToCooling(params->xCoolingQueue, msg);
+    }
+}
+
+// Applique toutes les lignes de la table qui portent l'ID de la trame. Les rejets sont comptes.
+static void ProcessFrame(const CanRxParams_t *params, const CanFrame_t *frame)
+{
+    bool known = false;
+    bool tooShort = false;
+
+    if (frame->ide == 0U) // trames standard seulement
+    {
+        for (unsigned i = 0; i < canRxTableSize; i++)
+        {
+            const CanRxSignal_t *signal = &canRxTable[i];
+            if (signal->id != frame->id)
+            {
+                continue;
+            }
+            known = true;
+
+            dataMessage_t appMsg = {.id = signal->appId, .timestamp = frame->rxTick}; // heure de reception (B1)
+            if (!DecodeSignal(frame, signal, &appMsg.data))
+            {
+                tooShort = true;
+                continue;
+            }
+            RouteMessage(params, signal->route, &appMsg);
+            console_print("sent appMsg id:%d data:%ld\n", appMsg.id, (long)appMsg.data);
+        }
+    }
+
+    if (!known)
+    {
+        canRxStats.unknownId++;
+    }
+    else if (tooShort)
+    {
+        canRxStats.badDlc++;
+    }
+}
+
+// Appelee par l'ISR de reception de la carte (et par l'emulateur) : depose la trame pour TaskCanRx.
+// Contexte d'interruption : ni attente ni printf.
+void CanRx_OnFrameFromISR(const CanFrame_t *frame, BaseType_t *higherPriorityTaskWoken)
+{
+    if (xCanRxQueue == NULL)
+    {
+        return; // queues pas encore creees par MainApp()
+    }
+    if (xQueueSendFromISR(xCanRxQueue, frame, higherPriorityTaskWoken) != pdPASS)
+    {
+        // Queue pleine : la trame la plus ancienne laisse sa place a la nouvelle (T13)
+        CanFrame_t oldest;
+        (void)xQueueReceiveFromISR(xCanRxQueue, &oldest, higherPriorityTaskWoken);
+        (void)xQueueSendFromISR(xCanRxQueue, frame, higherPriorityTaskWoken);
+        canRxStats.rxQueueFull++;
     }
 }
 
 void TaskCanRx(void *pvParameters)
 {
     CanRxParams_t *params = (CanRxParams_t *)pvParameters;
-    QueueHandle_t *xMainQueue = params->xMainQueue;
-    QueueHandle_t *xTRVPQueue = params->xTRVPQueue;
     QueueHandle_t *xCanRxQueue = params->xCanRxQueue;
     QueueHandle_t *xWDGQueue = params->xWDGQueue;
-    QueueHandle_t *xCoolingQueue = params->xCoolingQueue;
     TaskId taskId = params->taskId;
 
     TickType_t timeNow = xTaskGetTickCount();
 
     while (1)
     {
+        CanFrame_t frame = {0};
 
-        dataMessage_t appMsg = {0, 0};
-        dataCan canMsg = {0};
-
-        xQueuePeek(*xCanRxQueue, &canMsg, CAN_RX_TIMEOUT);
+        xQueuePeek(*xCanRxQueue, &frame, CAN_RX_TIMEOUT);
         console_print("------(B)CanRx------\n");
 
-        // Envoyer à la queue appropriée selon l'ID avec switch
-        while ((xQueueReceive(*xCanRxQueue, &canMsg, pdMS_TO_TICKS(0))) == pdPASS)
+        while ((xQueueReceive(*xCanRxQueue, &frame, pdMS_TO_TICKS(0))) == pdPASS)
         {
-            appMsg.data = canMsg.data;
-            appMsg.timestamp = xTaskGetTickCount();
-
-            switch ((CanIds)canMsg.id)
-            {
-            // Wheel speeds went to Main Task
-            case CAN_wheelFRId:
-                appMsg.id = wheelFRId;
-                xQueueSend(*xTRVPQueue, &appMsg, pdMS_TO_TICKS(5));
-                break;
-            case CAN_wheelFLId:
-                appMsg.id = wheelFLId;
-                xQueueSend(*xTRVPQueue, &appMsg, pdMS_TO_TICKS(5));
-                break;
-            case CAN_wheelRRId:
-                appMsg.id = wheelRRId;
-                xQueueSend(*xTRVPQueue, &appMsg, pdMS_TO_TICKS(5));
-                break;
-            case CAN_wheelRLId:
-                appMsg.id = wheelRLId;
-                xQueueSend(*xTRVPQueue, &appMsg, pdMS_TO_TICKS(5));
-                break;
-
-            case CAN_apps1Id:
-                appMsg.id = apps1Id;
-                xQueueSend(*xTRVPQueue, &appMsg, pdMS_TO_TICKS(5));
-                break;
-            case CAN_apps2Id:
-                appMsg.id = apps2Id;
-                xQueueSend(*xTRVPQueue, &appMsg, pdMS_TO_TICKS(5));
-                break;
-
-            case CAN_motor_tempId:
-                appMsg.id = motor_tempId;
-                xQueueSend(*xMainQueue, &appMsg, pdMS_TO_TICKS(5));
-                SendToCooling(xCoolingQueue, &appMsg);
-                break;
-            case CAN_inverter_tempId:
-                appMsg.id = inverter_tempId;
-                xQueueSend(*xMainQueue, &appMsg, pdMS_TO_TICKS(5));
-                SendToCooling(xCoolingQueue, &appMsg);
-                break;
-            case CAN_voltageId:
-                appMsg.id = voltageId;
-                xQueueSend(*xMainQueue, &appMsg, pdMS_TO_TICKS(5));
-                break;
-            default:
-                break;
-            }
-            console_print("sent appMsg id:%d data:%ld\n", appMsg.id, (long)appMsg.data);
+            ProcessFrame(params, &frame);
         }
 
         // console_print((ledState = !ledState) ? "Led ON\n" : "Led OFF\n");

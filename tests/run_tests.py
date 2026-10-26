@@ -34,6 +34,7 @@ SECTORS = {
     "couple": ("test_couple.c", [], "Consigne de couple"),
     "vitesse": ("test_vitesse.c", [], "Vitesse vehicule"),
     "can_rx": ("test_can_rx.c", [], "Reception CAN (TaskCanRx)"),
+    "can_tx": ("test_can_tx.c", [], "Emission CAN (TaskCanTx)"),
     "chaine": ("test_chaine.c", [], "Chaine TRVP -> Main -> CanTx"),
     "demarrage": ("test_integration.c", [], "Demarrage (MainApp)"),
     "watchdog": ("test_watchdog.c", ["USE_WDG", "refreshIWDG=test_refreshIWDG"], "Watchdog"),
@@ -67,6 +68,7 @@ def build_sector(cc, name, app_dir, includes):
     else:
         units = [(HOST / "src" / "freertos_stubs.c", ["-DTEST_LINK_REAL_UTILS"]),
                  (HOST / "src" / "console_stub.c", []),
+                 (HOST / "src" / "can_stub.c", []),
                  (HOST / "src" / test_file, ["-Wall", "-Wno-unused-function"])]
         units += [(src, ["-w"]) for src in sorted(app_dir.glob("*.c"))]
 

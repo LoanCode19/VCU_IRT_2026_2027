@@ -65,11 +65,15 @@ typedef struct
 
 } dataMessage_t;
 
+// Trame CAN recue, telle que l'ISR de la carte la remet au VCU (CanRx_OnFrameFromISR)
 typedef struct
 {
-    uint8_t id;
-    uint32_t data;
-} dataCan;
+    uint32_t id;       // 11 bits (standard) ou 29 bits (etendu)
+    uint8_t ide;       // 0 = standard, 1 = etendu
+    uint8_t dlc;       // nombre d'octets recus
+    uint8_t data[8];
+    TickType_t rxTick; // heure de reception, prise dans l'ISR
+} CanFrame_t;
 
 typedef TickType_t WDGTimoutTable[MAX_TASKS];
 

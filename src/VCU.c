@@ -48,7 +48,7 @@ void MainApp(void)
     configASSERT(xIHMQueue != NULL);
     xCanTxQueue = xQueueCreate(10, sizeof(dataMessage_t));
     configASSERT(xCanTxQueue != NULL);
-    xCanRxQueue = xQueueCreate(10, sizeof(dataCan));
+    xCanRxQueue = xQueueCreate(32, sizeof(CanFrame_t)); // 8 ms de trames au debit maximal (500 kbit/s)
     configASSERT(xCanRxQueue != NULL);
     xWDGQueue = xQueueCreate(10, sizeof(WdgMessage_t));
     configASSERT(xWDGQueue != NULL);

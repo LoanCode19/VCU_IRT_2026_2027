@@ -7,6 +7,7 @@
 
 #include "emu.h"
 #include "structs.h"
+#include "canIds.h"
 #include "queueHandles.h"
 #include "vcu_test.h"
 
@@ -26,8 +27,8 @@ int EmuTest_Run(void)
     // Messages comptes a l'envoi par l'espion des queues : que TaskRawValuesProcessing les lise
     // ou non (B8), le resultat est le meme
     uint32_t before = EmuTrace_SentCount(xTRVPQueue, apps1Id) + EmuTrace_SentCount(xTRVPQueue, apps2Id);
-    (void)EmuCan_SendNow(0x30, 2000);
-    (void)EmuCan_SendNow(0x31, 2100);
+    (void)EmuCan_SendNow(CAN_ID_APPS1, 2000);
+    (void)EmuCan_SendNow(CAN_ID_APPS2, 2100);
     EmuWaitMs(20);
     unsigned routed = (unsigned)(EmuTrace_SentCount(xTRVPQueue, apps1Id) + EmuTrace_SentCount(xTRVPQueue, apps2Id) - before);
     vt_check("RT-3", "-", routed == 2U, "2 trames APPS injectees -> %u message(s) routes vers TRVP par TaskCanRx",
@@ -35,7 +36,7 @@ int EmuTest_Run(void)
 
     // Capteur periodique : temperature moteur a 10 Hz pendant 350 ms -> 4 trames (t = 0, 100, 200, 300)
     before = EmuTrace_SentCount(xMainQueue, motor_tempId);
-    EmuCan_SetPeriodic(0x40, 100U, 45);
+    EmuDti_SetTemperatures(45, 45, 100U);
     EmuWaitMs(350);
     EmuCan_StopAll();
     EmuWaitMs(20);

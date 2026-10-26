@@ -222,6 +222,22 @@ def check_board():
           "ISR CAN : Error_Handler() appele dans l'interruption (le VCU se fige)")
     check("C1b", "-", "portYIELD_FROM_ISR" in isr,
           "ISR CAN : pas de portYIELD_FROM_ISR apres xQueueSendFromISR")
+
+    # Le CAN ne doit demarrer qu'une fois les queues creees par MainApp() : sinon une trame arrivee
+    # au demarrage est deposee dans une queue qui n'existe pas encore
+    def body(code, signature):
+        return code.split(signature, 1)[1].split("\n}", 1)[0] if signature in code else ""
+
+    can_init = body(main_c, "static void MX_CAN1_Init(void)")
+    main_body = body(main_c, "int main(void)")
+    app_pos = main_body.find("MainApp();")
+    start_pos = max(main_body.find("HAL_CAN_Start"), main_body.find("StartCan("))
+    started_after = "HAL_CAN_Start" not in can_init and 0 <= app_pos < start_pos
+    check("C1c", "-", started_after,
+          "CAN demarre " + ("apres MainApp(), une fois les queues creees" if started_after
+                            else "dans MX_CAN1_Init(), avant que MainApp() cree les queues"))
+    check("C1d", "-", "CAN_IT_RX_FIFO1_MSG_PENDING" not in main_c,
+          "notification FIFO1 activee : aucun filtre n'y envoie de trame et aucun callback ne la traite")
     check("C4a", "-", "CAN_MODE_LOOPBACK" not in main_c and "TaskSendTXMessages" not in main_c,
           "main.c : CAN en mode LOOPBACK et/ou tache de test TaskSendTXMessages encore presents")
 
@@ -230,7 +246,7 @@ def check_board():
     ioc = dict(line.split("=", 1) for line in read(BOARD / "VCU_STM32F407.ioc").splitlines() if "=" in line)
     can_fields = [("Prescaler", "Prescaler", "16"), ("TimeSeg1", "BS1", "CAN_BS1_1TQ"),
                   ("TimeSeg2", "BS2", "CAN_BS2_1TQ"), ("SyncJumpWidth", "SJW", "CAN_SJW_1TQ"),
-                  ("Mode", "Mode", "CAN_MODE_NORMAL")]
+                  ("Mode", "Mode", "CAN_MODE_NORMAL"), ("AutoBusOff", "ABOM", "DISABLE")]
     differences = []
     for field, key, default in can_fields:
         m = re.search(rf"hcan1\.Init\.{field}\s*=\s*(\w+)\s*;", main_c)
@@ -241,6 +257,25 @@ def check_board():
     check("C5a", "-", not differences,
           "CAN1 : main.c et .ioc " + ("identiques, " + ioc.get("CAN1.CalculateBaudRate", "?") + " bit/s"
                                      if not differences else "differents : " + ", ".join(differences)))
+
+    # C6 (T14) : apres un bus-off, le controleur CAN repart seul au lieu de rester muet jusqu'au
+    # prochain redemarrage, et chaque bus-off est compte pour etre vu au debogueur
+    m = re.search(r"hcan1\.Init\.AutoBusOff\s*=\s*(\w+)\s*;", main_c)
+    abom_code = m.group(1) if m else "absent"
+    abom_ioc = ioc.get("CAN1.ABOM", "DISABLE")
+    check("C6a", "-", abom_code == "ENABLE" and abom_ioc == "ENABLE",
+          f"reprise apres un bus-off : AutoBusOff {abom_code} (main.c) / {abom_ioc} (.ioc), attendu ENABLE")
+    m = re.search(r"static\s+void\s+StartCan\s*\(\s*void\s*\)\s*\{(.*?)\n\}", main_c, re.S)
+    start_can = m.group(1) if m else ""
+    error_cb = main_c.split("HAL_CAN_ErrorCallback", 1)[1].split("\n}", 1)[0] if \
+        "HAL_CAN_ErrorCallback" in main_c else ""
+    missing = []
+    if not (re.search(r"\bCAN_IT_ERROR\b", start_can) and "CAN_IT_BUSOFF" in start_can):
+        missing.append("notifications CAN_IT_ERROR et CAN_IT_BUSOFF dans StartCan()")
+    if "HAL_CAN_ERROR_BOF" not in error_cb or "canRxStats.busOff" not in error_cb:
+        missing.append("comptage dans HAL_CAN_ErrorCallback()")
+    check("C6b", "-", not missing,
+          "bus-off compte : " + ("oui, dans canRxStats.busOff" if not missing else "manque " + ", ".join(missing)))
 
     # Taches et queues declarees dans le .ioc : creees dans main.c, pas commentees a la main
     tasks = [entry.split(",")[0] for entry in ioc.get("FREERTOS.Tasks01", "").split(";") if entry]
