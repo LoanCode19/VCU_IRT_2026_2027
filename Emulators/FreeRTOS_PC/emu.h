@@ -65,6 +65,9 @@ void EmuDti_SetVoltage(int32_t volts, uint32_t periodMs);
 // depuis le demarrage. La tache qui lit la queue n'y change rien : on observe l'envoi, pas le stock.
 uint32_t EmuTrace_SentCount(QueueHandle_t queue, int messageId);
 
+// data du dernier dataMessage_t d'identifiant messageId depose dans queue. false si aucun.
+bool EmuTrace_LastValue(QueueHandle_t queue, int messageId, int32_t *value);
+
 // ----------------------------------------------------------------------------------------------
 // Watchdog (main_pc.c) : nombre d'appels a refreshIWDG() depuis le demarrage (avec -D USE_WDG)
 uint32_t EmuIwdg_RefreshCount(void);
