@@ -530,15 +530,15 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
-// Demarre le CAN et sa notification de reception. Appelee apres MainApp() : une trame recue
-// trouve toujours sa queue. Les interruptions restent masquees par FreeRTOS jusqu'a osKernelStart().
+// Demarre le CAN, sa notification de reception et celle du bus-off. Appelee apres MainApp() : une trame
+// recue trouve toujours sa queue. Les interruptions restent masquees par FreeRTOS jusqu'a osKernelStart().
 static void StartCan(void)
 {
   if (HAL_CAN_Start(&hcan1) != HAL_OK)
   {
     Error_Handler();
   }
-  if (HAL_CAN_ActivateNotification(&hcan1, CAN_IT_RX_FIFO0_MSG_PENDING) != HAL_OK)
+  if (HAL_CAN_ActivateNotification(&hcan1, CAN_IT_RX_FIFO0_MSG_PENDING | CAN_IT_ERROR | CAN_IT_BUSOFF) != HAL_OK)
   {
     Error_Handler();
   }
@@ -566,6 +566,18 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
     CanRx_OnFrameFromISR(&frame, &woken);
   }
   portYIELD_FROM_ISR(woken); // reveille TaskCanRx tout de suite, sans attendre le prochain tick
+}
+
+// Erreur du CAN (interruption SCE). Seul le bus-off est active : il est compte, et le controleur
+// repart seul apres 128 x 11 bits recessifs, environ 3 ms (AutoBusOff, T14). La HAL cumule les
+// erreurs dans hcan->ErrorCode : le bit est efface pour que le bus-off suivant soit compte aussi.
+void HAL_CAN_ErrorCallback(CAN_HandleTypeDef *hcan)
+{
+  if ((HAL_CAN_GetError(hcan) & HAL_CAN_ERROR_BOF) != 0U)
+  {
+    canRxStats.busOff++;
+    hcan->ErrorCode &= ~HAL_CAN_ERROR_BOF;
+  }
 }
 
 // Emission CAN (stm32Interface.h). Renvoie false si les 3 boites d'emission sont pleines : la trame

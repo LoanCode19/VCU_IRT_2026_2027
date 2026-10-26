@@ -17,6 +17,7 @@ typedef struct
     uint32_t lostTrvp;
     uint32_t lostMain;
     uint32_t lostCooling;
+    uint32_t busOff; // passages du controleur CAN en bus-off, comptes par la carte (T14)
 } CanRxStats_t;
 
 extern volatile CanRxStats_t canRxStats;
