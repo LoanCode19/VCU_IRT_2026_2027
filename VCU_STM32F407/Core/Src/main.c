@@ -27,6 +27,7 @@
 #include "VCU.h"
 #include "structs.h"
 #include "queueHandles.h"
+#include "stm32Interface.h"
 
 /* USER CODE END Includes */
 
@@ -52,6 +53,8 @@ I2C_HandleTypeDef hi2c1;
 
 I2S_HandleTypeDef hi2s3;
 
+IWDG_HandleTypeDef hiwdg;
+
 SPI_HandleTypeDef hspi1;
 
 osThreadId defaultTaskHandle;
@@ -66,6 +69,7 @@ static void MX_I2C1_Init(void);
 static void MX_I2S3_Init(void);
 static void MX_SPI1_Init(void);
 static void MX_CAN1_Init(void);
+static void MX_IWDG_Init(void);
 void StartDefaultTask(void const * argument);
 
 /* USER CODE BEGIN PFP */
@@ -74,6 +78,9 @@ void StartDefaultTask(void const * argument);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+
+// 1 si le dernier redemarrage vient du watchdog IWDG (lu au demarrage, visible au debogueur)
+volatile uint8_t lastResetByIwdg = 0;
 
 uint8_t ubKeyNumber = 0x0;
 // CAN_HandleTypeDef hcan1;
@@ -99,14 +106,18 @@ int main(void)
   HAL_Init();
 
   /* USER CODE BEGIN Init */
-
+  // Cause du dernier redemarrage : la lire avant tout, puis effacer les drapeaux pour le prochain
+  lastResetByIwdg = (__HAL_RCC_GET_FLAG(RCC_FLAG_IWDGRST) != RESET) ? 1U : 0U;
+  __HAL_RCC_CLEAR_RESET_FLAGS();
   /* USER CODE END Init */
 
   /* Configure the system clock */
   SystemClock_Config();
 
   /* USER CODE BEGIN SysInit */
-
+  // L'IWDG continue de compter quand le debogueur arrete le processeur : le figer, sinon
+  // chaque point d'arret redemarrerait la carte
+  __HAL_DBGMCU_FREEZE_IWDG();
   /* USER CODE END SysInit */
 
   /* Initialize all configured peripherals */
@@ -115,8 +126,12 @@ int main(void)
   MX_I2S3_Init();
   MX_SPI1_Init();
   MX_CAN1_Init();
+  MX_IWDG_Init();
   /* USER CODE BEGIN 2 */
-
+  if (lastResetByIwdg)
+  {
+    printf("Redemarrage par le watchdog (IWDG) : une tache ne repondait plus\n");
+  }
   /* USER CODE END 2 */
 
   /* USER CODE BEGIN RTOS_MUTEX */
@@ -181,8 +196,9 @@ void SystemClock_Config(void)
   /** Initializes the RCC Oscillators according to the specified parameters
   * in the RCC_OscInitTypeDef structure.
   */
-  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
+  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_LSI|RCC_OSCILLATORTYPE_HSE;
   RCC_OscInitStruct.HSEState = RCC_HSE_ON;
+  RCC_OscInitStruct.LSIState = RCC_LSI_ON;
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
   RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
   RCC_OscInitStruct.PLL.PLLM = 8;
@@ -358,6 +374,34 @@ static void MX_I2S3_Init(void)
 }
 
 /**
+  * @brief IWDG Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_IWDG_Init(void)
+{
+
+  /* USER CODE BEGIN IWDG_Init 0 */
+
+  /* USER CODE END IWDG_Init 0 */
+
+  /* USER CODE BEGIN IWDG_Init 1 */
+
+  /* USER CODE END IWDG_Init 1 */
+  hiwdg.Instance = IWDG;
+  hiwdg.Init.Prescaler = IWDG_PRESCALER_32;
+  hiwdg.Init.Reload = 500;
+  if (HAL_IWDG_Init(&hiwdg) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN IWDG_Init 2 */
+
+  /* USER CODE END IWDG_Init 2 */
+
+}
+
+/**
   * @brief SPI1 Initialization Function
   * @param None
   * @retval None
@@ -523,6 +567,13 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
   {
     // console_print("Failed to send CAN message to queue\n");
   }
+}
+
+// Recharge le compteur de l'IWDG (stm32Interface.h). Appelee par TaskWDG, seulement quand
+// toutes les taches surveillees sont a l'heure.
+void refreshIWDG(void)
+{
+  HAL_IWDG_Refresh(&hiwdg);
 }
 
 int _write(int file, char *ptr, int len)
