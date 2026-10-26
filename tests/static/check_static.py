@@ -222,6 +222,22 @@ def check_board():
           "ISR CAN : Error_Handler() appele dans l'interruption (le VCU se fige)")
     check("C1b", "-", "portYIELD_FROM_ISR" in isr,
           "ISR CAN : pas de portYIELD_FROM_ISR apres xQueueSendFromISR")
+
+    # Le CAN ne doit demarrer qu'une fois les queues creees par MainApp() : sinon une trame arrivee
+    # au demarrage est deposee dans une queue qui n'existe pas encore
+    def body(code, signature):
+        return code.split(signature, 1)[1].split("\n}", 1)[0] if signature in code else ""
+
+    can_init = body(main_c, "static void MX_CAN1_Init(void)")
+    main_body = body(main_c, "int main(void)")
+    app_pos = main_body.find("MainApp();")
+    start_pos = max(main_body.find("HAL_CAN_Start"), main_body.find("StartCan("))
+    started_after = "HAL_CAN_Start" not in can_init and 0 <= app_pos < start_pos
+    check("C1c", "-", started_after,
+          "CAN demarre " + ("apres MainApp(), une fois les queues creees" if started_after
+                            else "dans MX_CAN1_Init(), avant que MainApp() cree les queues"))
+    check("C1d", "-", "CAN_IT_RX_FIFO1_MSG_PENDING" not in main_c,
+          "notification FIFO1 activee : aucun filtre n'y envoie de trame et aucun callback ne la traite")
     check("C4a", "-", "CAN_MODE_LOOPBACK" not in main_c and "TaskSendTXMessages" not in main_c,
           "main.c : CAN en mode LOOPBACK et/ou tache de test TaskSendTXMessages encore presents")
 
