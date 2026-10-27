@@ -262,11 +262,9 @@ float RampThrottle(float potnom)
     {
         if (potnom > 0)
         {
-            console_print("Ramping up throttle from %f to %f with ramp rate %f\n", throttleRamped, potnom, actualThrottleRamp);
             //                    //  current       target,  rate
             throttleRamped = RAMPUP(throttleRamped, potnom, actualThrottleRamp);
             potnom = throttleRamped;
-            console_print("Ramping up throttle: %f\n", throttleRamped);
         }
         else
         {

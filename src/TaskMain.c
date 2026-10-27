@@ -13,7 +13,7 @@
 #include "my_fp.h"
 #include "project_config.h"
 
-void PrintMainState(const MainState_t *mainState);
+void PrintMainState(const MainState_t *mainState, float torqueCmd);
 
 // Consignes perdues parce que la queue de CanTx etait pleine (lisible au debogueur)
 static uint32_t canTxSendFailures = 0;
@@ -35,8 +35,9 @@ void TaskMain(void *pvParameters)
 {
     MainState_t mainState = {0};
     bool faultLightOn = false; // dernier ordre FaultLight envoye a l'IHM
+    float torqueCmd = 0.0f;    // derniere consigne envoyee, pour les traces
 
-    TickType_t timeNow = xTaskGetTickCount();
+    TickType_t lastTrace = xTaskGetTickCount();
 
     MainParams_t *params = (MainParams_t *)pvParameters;
     QueueHandle_t *xMainQueue = params->xMainQueue;
@@ -56,8 +57,6 @@ void TaskMain(void *pvParameters)
         // console_print((ledState = !ledState) ? "Led2 ON\n" : "Led2 OFF\n");
         dataMessage_t msg = {0};
         xQueuePeek(*xMainQueue, &msg, TRVP_TIMEOUT);
-
-        console_print("------(B)MainState------\n");
 
         while ((xQueueReceive(*xMainQueue, &msg, pdMS_TO_TICKS(0))) == pdPASS)
         {
@@ -80,7 +79,6 @@ void TaskMain(void *pvParameters)
                 mainState.ThrottleCommand = msg;
                 break;
             }
-            console_print("Received from queue: id=%d, timestamp=%lu\n", msg.id, (unsigned long)msg.timestamp);
         }
 
         // S5 (T1, T2) : une donnee absente ou perimee coupe le couple, temperatures comprises (T1). Une
@@ -115,28 +113,31 @@ void TaskMain(void *pvParameters)
             {
                 canTxSendFailures++; // queue pleine : consigne perdue, mais Main continue (R3)
             }
-            console_print("Calculated throttle command: %f\n", throttle);
+            torqueCmd = throttle;
         }
 
-        PrintMainState(&mainState);
+        // Traces : l'etat une fois par seconde, pas a chaque passage (T17)
+        TickType_t traceNow = xTaskGetTickCount();
+        if ((TickType_t)(traceNow - lastTrace) >= pdMS_TO_TICKS(TRACE_PERIOD_MS))
+        {
+            lastTrace = traceNow;
+            PrintMainState(&mainState, torqueCmd);
+        }
 
 #ifdef USE_WDG
         // feed WDG
         wdgFeed(taskId, xTaskGetTickCount());
 #endif
-
-        console_print("------(E)MainState------\n\n");
     }
 
     // xTaskDelayUntil(&timeNow, pdMS_TO_TICKS(1000));
 }
 
 // function, to print current state of the motor controller (for debug)
-void PrintMainState(const MainState_t *mainState)
+void PrintMainState(const MainState_t *mainState, float torqueCmd)
 {
-    // add timestate to each print
-
     console_print("Main State:\n");
+    console_print("  Torque command: %ld (0.1 %%)\n", (long)(torqueCmd * 10.0f));
     console_print("  Throttle Command: %ld state:%d\n ", (long)mainState->ThrottleCommand.data, mainState->ThrottleCommand.timeStatus);
     console_print("  Speed: %ld state:%d\n", (long)mainState->speed.data, mainState->speed.timeStatus);
     console_print("  Brake Pedal Pressed: %s\n", mainState->brakePedalPressed ? "Yes" : "No");

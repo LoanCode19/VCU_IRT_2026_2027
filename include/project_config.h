@@ -38,4 +38,8 @@
 #define TEMP_TIMEOUT_MS 500
 #define VOLTAGE_TIMEOUT_MS 500
 
+// Traces des taches de la chaine de couple (TRVP, Main) : leur etat une fois par seconde, jamais a chaque
+// passage (T17). La console SWV de la carte ne suit pas 100 passages par seconde.
+#define TRACE_PERIOD_MS 1000
+
 #endif // PROJECT_CONFIG_H
