@@ -40,6 +40,7 @@ SECTORS = {
     "can_tx": ("test_can_tx.c", [], "Emission CAN (TaskCanTx)"),
     "carte": ("test_carte.c", ["SELFTEST_HOST"], "Code CAN de la carte (fausse HAL)"),
     "chaine": ("test_chaine.c", [], "Chaine TRVP -> Main -> CanTx"),
+    "r2d": ("test_r2d.c", [], "Ready-to-Drive (machine a etats)"),
     "demarrage": ("test_integration.c", [], "Demarrage (MainApp)"),
     "watchdog": ("test_watchdog.c", ["USE_WDG", "refreshIWDG=test_refreshIWDG"], "Watchdog"),
     "ihm": ("test_ihm.c", [], "IHM et sorties TOR"),
