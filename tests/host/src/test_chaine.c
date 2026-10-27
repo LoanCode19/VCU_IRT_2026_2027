@@ -117,6 +117,166 @@ static int FaultLightOrder(void)
     return TestLastFaultLight();
 }
 
+// S2c : TRVP une passe, APPS a 40 %. Frein jamais recu, ou recu (relache) a brakeTimestamp. Renvoie la consigne
+// pedale envoyee a Main, -1 si aucune.
+static float TrvpPedal(bool sendBrake, TickType_t brakeTimestamp)
+{
+    Setup();
+    Push(xTRVPQueue, apps1Id, (int32_t)(potmin[0] + (potmax[0] - potmin[0]) * 0.4f), T_NOW);
+    Push(xTRVPQueue, apps2Id, (int32_t)(potmin[1] + (potmax[1] - potmin[1]) * 0.4f), T_NOW);
+    if (sendBrake)
+    {
+        Push(xTRVPQueue, brakePressedId, 0, brakeTimestamp);
+    }
+    RunTaskOnce(TaskRawValuesProcessing, &sTrvpParams);
+
+    float pedal = -1.0f;
+    dataMessage_t msg = {0};
+    while (xQueueReceive(xMainQueue, &msg, 0) == pdPASS)
+    {
+        if (msg.id == processedThrottleId)
+        {
+            pedal = FP_TOFLOAT(msg.data);
+        }
+    }
+    return pedal;
+}
+
+// S1k : APPS deposes pour TRVP a chaque passe, et derniere faute APPS envoyee a Main
+static float sTrvpApps[2];
+static int sLastAppsFault;
+
+static void PushTrvpApps(TickType_t now)
+{
+    for (int i = 0; i < 2; i++)
+    {
+        Push(xTRVPQueue, (i == 0) ? apps1Id : apps2Id,
+             (int32_t)(potmin[i] + (potmax[i] - potmin[i]) * sTrvpApps[i] / 100.0f), now);
+    }
+}
+
+static void DrainAppsFault(void)
+{
+    dataMessage_t msg = {0};
+    while (xQueueReceive(xMainQueue, &msg, 0) == pdPASS)
+    {
+        if (msg.id == appsFaultId)
+        {
+            sLastAppsFault = (int)msg.data;
+        }
+    }
+}
+
+static void TrvpAppsHook(TickType_t now)
+{
+    DrainAppsFault();
+    PushTrvpApps(now);
+}
+
+// TRVP pendant passes periodes, APPS a percent1 / percent2. Renvoie la derniere faute APPS envoyee a Main : 1
+// confirmee, 0 aucune, -1 rien envoye.
+static int TrvpAppsFault(float percent1, float percent2, unsigned passes)
+{
+    Setup();
+    sTrvpApps[0] = percent1;
+    sTrvpApps[1] = percent2;
+    sLastAppsFault = -1;
+    PushTrvpApps(T_NOW);
+    vTestSetDelayCallsBeforeEscape(passes - 1U, TrvpAppsHook);
+    RunTaskOnce(TaskRawValuesProcessing, &sTrvpParams);
+    vTestSetDelayCallsBeforeEscape(0U, NULL);
+    DrainAppsFault();
+    return sLastAppsFault;
+}
+
+// S1l : sequence R2D, donnees fraiches a chaque passe ; a partir de la passe TEST_R2D_PASSES, TRVP signale une faute
+// APPS confirmee
+static void AppsFaultInR2D(unsigned pass, TickType_t now)
+{
+    TestR2DEntry(pass, now);
+    Push(xMainQueue, processedThrottleId, 0, now);
+    Push(xMainQueue, calculatedSpeedId, 0, now);
+    Push(xMainQueue, motor_tempId, 40, now);
+    Push(xMainQueue, inverter_tempId, 40, now);
+    Push(xMainQueue, voltageId, 350, now);
+    if (pass >= TEST_R2D_PASSES)
+    {
+        Push(xMainQueue, appsFaultId, 1, now);
+    }
+}
+
+static const char *LightName(int state)
+{
+    return (state == -1) ? "aucun ordre" : ((state == 1) ? "allume" : "eteint");
+}
+
+// Frein perdu, faute APPS, son R2D : ne dependent pas du couple de la chaine (B2a)
+static void TestChaine_R2DAndFaults(void)
+{
+    // S2c : le frein agit sur le couple (S2), c'est un signal critique (T 11.9.1) : perdu, il compte comme appuye
+    float fresh = TrvpPedal(true, T_NOW);
+    float never = TrvpPedal(false, 0);
+    float stale = TrvpPedal(true, T_NOW - 300U);
+    if (fresh <= 0.0f)
+    {
+        vt_blocked("S2c", "T 11.9.2.d", "TRVP : pas de consigne pedale avec le frein relache, perte du frein non verifiable");
+    }
+    else
+    {
+        vt_check("S2c", "T 11.9.2.d", (never <= 0.0f) && (stale <= 0.0f),
+                 "APPS 40 %% : frein relache recu -> consigne pedale %.1f %% ; frein jamais recu -> %.1f %% ; frein vieux "
+                 "de 300 ms -> %.1f %% (attendu > 0, puis 0 et 0)",
+                 fresh, never, stale);
+    }
+
+    // S1k : faute APPS confirmee (plus de 100 ms d'incoherence) -> TRVP la signale a Main
+    int fault = TrvpAppsFault(30.0f, 70.0f, 20U);
+    int noFault = TrvpAppsFault(40.0f, 40.0f, 20U);
+    vt_check("S1k", "-", (fault == 1) && (noFault == 0),
+             "APPS 30 %% / 70 %% pendant 200 ms -> faute envoyee a Main : %d ; APPS coherents -> %d (attendu 1, puis 0 ; "
+             "-1 : rien envoye)",
+             fault, noFault);
+
+    // S1l : Main allume le voyant defaut pour une faute APPS confirmee, meme avec des donnees fraiches
+    Setup();
+    TestRunMain(&sMainParams, TEST_R2D_PASSES + 2U, AppsFaultInR2D);
+    int beforeFault = -1;
+    for (unsigned i = 0; i < TEST_R2D_PASSES; i++)
+    {
+        if (sTestRun.faultLight[i] != -1)
+        {
+            beforeFault = sTestRun.faultLight[i];
+        }
+    }
+    int afterFault = TestLastFaultLight();
+    vt_check("S1l", "-", (beforeFault == -1) && (afterFault == 1),
+             "donnees fraiches -> voyant : %s ; puis faute APPS confirmee recue de TRVP -> voyant : %s (attendu aucun "
+             "ordre, puis allume)",
+             LightName(beforeFault), LightName(afterFault));
+
+    // S3m : son R2D (EV 4.12.1 : de 1 a 3 s). Main en R2D pendant 2,6 s.
+    Setup();
+    TestRunMain(&sMainParams, 260U, TestR2DEntry);
+    int on = -1;
+    int off = -1;
+    for (unsigned i = 0; i < sTestRun.passes; i++)
+    {
+        if ((on == -1) && (sTestRun.buzzer[i] == 1))
+        {
+            on = (int)i;
+        }
+        else if ((on != -1) && (off == -1) && (sTestRun.buzzer[i] == 0))
+        {
+            off = (int)i;
+        }
+    }
+    long durationMs = ((on != -1) && (off != -1)) ? (long)(off - on) * (long)CONTROL_PERIOD_MS : -1L;
+    vt_check("S3m", "EV 4.12.1", (on == 1) && (durationMs >= 1000L) && (durationMs <= 3000L),
+             "entree en R2D a la passe 1 -> son ON a la passe %d, coupe %ld ms plus tard (attendu ON a la passe 1, puis "
+             "OFF entre 1000 et 3000 ms ; -1 : jamais)",
+             on, durationMs);
+}
+
 int main(void)
 {
     vt_begin("Chaine de couple TRVP -> Main -> CanTx");
@@ -135,6 +295,8 @@ int main(void)
              "Main pendant 100 ms sans aucun message -> %u consigne(s), plus long ecart %lu ms (attendu au plus 20 ms : "
              "le DTI coupe apres 100 ms sans consigne)",
              count, (unsigned long)maxGap);
+
+    TestChaine_R2DAndFaults();
 
     if (!chainWorks)
     {

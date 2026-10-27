@@ -71,16 +71,35 @@ static void Push(QueueHandle_t queue, MessageIds id, int32_t data, TickType_t ti
     (void)xQueueSend(queue, &msg, 0);
 }
 
-// TaskMain avec une consigne pedale deja calculee, pendant la sequence R2D (T8) si enterR2D, sinon TS actif sans
-// sequence. Renvoie la consigne onduleur de la derniere passe.
-static bool RunMain(float pedalPercent, TickType_t commandTimestamp, bool enterR2D, float *torque)
+// Donnees de Main : consigne pedale deja calculee, vitesse, temperatures et tension fraiches
+static void PushMainData(float pedalPercent, TickType_t commandTimestamp)
 {
-    Setup();
     Push(xMainQueue, processedThrottleId, FP_FROMFLT(pedalPercent), commandTimestamp);
     Push(xMainQueue, calculatedSpeedId, 0, T_NOW);
     Push(xMainQueue, motor_tempId, 40, T_NOW);
     Push(xMainQueue, inverter_tempId, 40, T_NOW);
     Push(xMainQueue, voltageId, 350, T_NOW);
+}
+
+// EV 4.11.8 : sequence R2D, puis le SDC s'ouvre a la passe TEST_R2D_PASSES
+static void SdcOpensInR2D(unsigned pass, TickType_t now)
+{
+    if (pass < TEST_R2D_PASSES)
+    {
+        TestR2DEntry(pass, now);
+    }
+    else
+    {
+        TestPushVehicle((TestVehicle_t){true, false, false, true}, now);
+    }
+}
+
+// TaskMain avec une consigne pedale deja calculee, pendant la sequence R2D (T8) si enterR2D, sinon TS actif sans
+// sequence. Renvoie la consigne onduleur de la derniere passe.
+static bool RunMain(float pedalPercent, TickType_t commandTimestamp, bool enterR2D, float *torque)
+{
+    Setup();
+    PushMainData(pedalPercent, commandTimestamp);
     TestRunMain(&sMainParams, TEST_R2D_PASSES, enterR2D ? TestR2DEntry : TestTsOnly);
     return TestLastTorque(torque);
 }
@@ -249,8 +268,23 @@ static void Test_EV4_11(void)
     vt_check("FS-15", "EV 4.11.7", !sent || torque <= 0.0f,
              "TS actif, pedale 40 %% sans sequence R2D (frein + interrupteur) -> couple %.1f %% (attendu 0)", torque);
 
-    vt_blocked("FS-16", "EV 4.11.8",
-               "sortie du R2D a l'ouverture du SDC : le VCU ne lit pas l'etat du SDC (entree a definir)");
+    // EV 4.11.8 : en R2D, le SDC s'ouvre -> plus de couple a la periode ou Main le voit
+    Setup();
+    PushMainData(40.0f, T_NOW);
+    TestRunMain(&sMainParams, TEST_R2D_PASSES + 1U, SdcOpensInR2D);
+    unsigned opened = TEST_R2D_PASSES;
+    float inR2D = sTestRun.torque[opened - 1U];
+    if (!sTestRun.torqueSent[opened - 1U] || (inR2D <= 0.0f))
+    {
+        vt_blocked("FS-16", "EV 4.11.8", "pas de couple apres la sequence R2D : sortie a l'ouverture du SDC non verifiable");
+    }
+    else
+    {
+        float afterOpen = sTestRun.torqueSent[opened] ? sTestRun.torque[opened] : 0.0f;
+        vt_check("FS-16", "EV 4.11.8", afterOpen <= 0.0f,
+                 "en R2D, consigne %.1f %% ; le SDC s'ouvre -> consigne %.1f %% a la meme periode (attendu 0)", inR2D,
+                 afterOpen);
+    }
 
     // EV 4.12.1 : le buzzer R2D doit pouvoir etre commande (condition necessaire du son de 1 a 3 s)
     Setup();
