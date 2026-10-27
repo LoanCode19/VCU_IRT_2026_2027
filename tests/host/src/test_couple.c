@@ -26,15 +26,27 @@ static void SettleSpeed(int speed)
     }
 }
 
-// Appels repetes pour sortir de la rampe et du filtre de SpeedLimitCommand.
+// Un appel de ProcessThrottle(), elapsedMs apres le precedent
+static float Process(float request, float speed, int motorTemp, int inverterTemp, float udc, uint32_t elapsedMs)
+{
+    return ProcessThrottle(request, speed, motorTemp, inverterTemp, udc, elapsedMs);
+}
+
+// Appels repetes, toutes les 10 ms, pour sortir de la rampe.
 static float SettledProcess(float request, int speed, int motorTemp, int inverterTemp, float udc)
 {
     float out = 0.0f;
     for (int i = 0; i < 100; i++)
     {
-        out = ProcessThrottle(request, speed, motorTemp, inverterTemp, udc);
+        out = Process(request, (float)speed, motorTemp, inverterTemp, udc, 10U);
     }
     return out;
+}
+
+// Pente de la rampe de montee a basse vitesse, en %/s
+static float RampPerS(void)
+{
+    return throtRampPerS;
 }
 
 static void ResetState(void)
@@ -83,47 +95,72 @@ static void TestCouple_ElectricalLimits(void)
                "limite 80 kW / 500 A : ProcessThrottle() ne recoit pas le courant Idc, test a ecrire avec la future limitation");
 }
 
+// Vitesse limite, dans l'unite de SpeedLimitCommand() : m/s (D7)
+static float SpeedLimitValue(void)
+{
+    return speedLimitMs;
+}
+
+// Consigne de 100 % apres le limiteur, a la vitesse speed
+static float LimitAt(float speed)
+{
+    float torque = 100.0f;
+    SpeedLimitCommand(&torque, speed);
+    return torque;
+}
+
 static void TestCouple_SpeedLimiter(void)
 {
-    float torque;
+    float limit = SpeedLimitValue();
 
-    // SpeedLimitCommand filtre la vitesse (IIR) : appels repetes a vitesse constante.
-    torque = 100.0f;
-    for (int i = 0; i < 100; i++)
-    {
-        torque = 100.0f;
-        SpeedLimitCommand(&torque, 0);
-    }
+    float torque = LimitAt(0.0f);
     vt_check("B3a", "-", torque >= 99.0f,
              "limiteur, vitesse 0, consigne 100 %% -> %.1f %% (attendu 100)", torque);
 
-    for (int i = 0; i < 100; i++)
-    {
-        torque = 100.0f;
-        SpeedLimitCommand(&torque, speedLimit / 2);
-    }
+    torque = LimitAt(limit / 2.0f);
     vt_check("B3b", "-", torque >= 99.0f,
-             "limiteur, vitesse %d = moitie de speedLimit -> %.1f %% (attendu 100)", speedLimit / 2, torque);
+             "limiteur, vitesse %.1f = moitie de la limite -> %.1f %% (attendu 100)", limit / 2.0f, torque);
 
-    for (int i = 0; i < 100; i++)
-    {
-        torque = 100.0f;
-        SpeedLimitCommand(&torque, speedLimit);
-    }
-    // IIRFILTER entier : (n + 15*l) >> 4 tronque, la vitesse filtree reste jusqu'a 15 sous la vraie
-    vt_check("B3c", "-", torque <= 0.0f,
-             "limiteur, vitesse = speedLimit (%d) -> %.1f %% (attendu 0 ; le filtre IIR entier reste sous la vitesse reelle)",
-             speedLimit, torque);
+    torque = LimitAt(limit);
+    vt_check("B3c", "-", torque <= 0.0f, "limiteur, vitesse = limite (%.1f) -> %.1f %% (attendu 0)", limit, torque);
+
+    // T12 : reduction lineaire sur les speedLimitMarginMs derniers m/s
+    float middle = limit - speedLimitMarginMs / 2.0f;
+    torque = LimitAt(middle);
+    vt_check("B3d", "-", (torque > 49.5f) && (torque < 50.5f),
+             "limiteur, vitesse %.2f m/s (milieu des %.1f derniers m/s) -> %.1f %% (attendu 50 : reduction lineaire)",
+             middle, speedLimitMarginMs, torque);
 }
 
 static void TestCouple_Ramp(void)
 {
     ResetState();
-    float first = ProcessThrottle(30.0f, 0, NOMINAL_TEMP, NOMINAL_TEMP, NOMINAL_UDC);
-    float second = ProcessThrottle(30.0f, 0, NOMINAL_TEMP, NOMINAL_TEMP, NOMINAL_UDC);
+    float first = Process(30.0f, 0.0f, NOMINAL_TEMP, NOMINAL_TEMP, NOMINAL_UDC, 10U);
+    float second = Process(30.0f, 0.0f, NOMINAL_TEMP, NOMINAL_TEMP, NOMINAL_UDC, 0U); // le temps n'a pas avance
     vt_check("R1a", "-", second == first,
              "2 appels sans que le temps avance -> %.1f %% puis %.1f %% (attendu identiques : rampe en %%/s, pas par appel)",
              first, second);
+
+    // La rampe doit avancer du temps ecoule, quel que soit le nombre d'appels
+    ResetState();
+    float out = 0.0f;
+    for (int i = 0; i < 100; i++)
+    {
+        out = Process(50.0f, 0.0f, NOMINAL_TEMP, NOMINAL_TEMP, NOMINAL_UDC, 1U);
+    }
+    float expected = RampPerS() * 0.1f;
+    vt_check("R1b", "-", (out > expected - 0.5f) && (out < expected + 0.5f),
+             "consigne 50 %%, 100 appels espaces de 1 ms -> %.1f %% (attendu %.1f : %.0f %%/s pendant 100 ms)", out,
+             expected, RampPerS());
+
+    // Apres une pause (tache retardee, debogueur), la rampe n'avance que de CONTROL_MAX_ELAPSED_MS
+    ResetState();
+    float afterPause = Process(50.0f, 0.0f, NOMINAL_TEMP, NOMINAL_TEMP, NOMINAL_UDC, 1000U);
+    float maxStep = RampPerS() * (float)CONTROL_MAX_ELAPSED_MS / 1000.0f;
+    vt_check("R1c", "-", afterPause <= maxStep + 0.01f,
+             "consigne 50 %%, appel 1 s apres le precedent -> %.1f %% (attendu au plus %.1f : la rampe n'avance que "
+             "de %u ms apres une pause)",
+             afterPause, maxStep, CONTROL_MAX_ELAPSED_MS);
 }
 
 static void TestCouple_TemperatureDerate(void)
@@ -148,7 +185,6 @@ int main(void)
     TestCouple_ElectricalLimits();
     TestCouple_Ramp();
     TestCouple_TemperatureDerate();
-    // En dernier : SpeedLimitCommand garde un filtre static impossible a remettre a zero
     TestCouple_SpeedLimiter();
 
     return vt_end();

@@ -65,7 +65,6 @@ void TaskCanTx(void *pvParameters)
 
         dataMessage_t msg = {0};
         BaseType_t xReturn = xQueueReceive(*xCanTxQueue, &msg, CAN_TX_TIMEOUT);
-        console_print("(B)------CanTX------\n");
         if (xReturn == pdPASS)
         {
 
@@ -79,7 +78,6 @@ void TaskCanTx(void *pvParameters)
                 {
                     canTxErrors++; // boites d'emission pleines : la consigne suivante partira
                 }
-                console_print("sending Throttle Order = %f to inverter\n", throttle);
                 break;
             }
             }
@@ -89,7 +87,5 @@ void TaskCanTx(void *pvParameters)
         // feed WDG
         wdgFeed(taskId, xTaskGetTickCount());
 #endif
-
-        console_print("(E)------CanTX------\n\n");
     }
 }

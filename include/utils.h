@@ -15,9 +15,10 @@ typedef struct
 } AppsMonitor_t;
 
 bool AppsMonitorStep(AppsMonitor_t *monitor, bool implausibleNow, float pedalPercent, TickType_t now);
-float ProcessThrottle(float finalSpnt, int speed, int motorTemp, int inverterTemp, float voltage);
+float ProcessThrottle(float finalSpnt, float speedMs, int motorTemp, int inverterTemp, float voltage, uint32_t elapsedMs);
 void updateDataTimeStatus(dataMessage_t *dataMsg, int count, int maxDiff, TickType_t now);
 void sort4(int32_t v[4], uint8_t n);
+int32_t WheelRawToMmS(int32_t raw);
 int calculateSpeed(dataMessage_t wheelSpeeds[4], int wheelCount);
 // Dernier signe de vie de chaque tache surveillee, ecrit par wdgFeed() et lu par TaskWDG (T15).
 // 0 : la tache n'a encore jamais donne signe de vie.

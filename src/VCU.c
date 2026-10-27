@@ -40,9 +40,9 @@ static void CreateTask(TaskFunction_t task, const char *name, uint16_t stackWord
 void MainApp(void)
 {
 
-    xMainQueue = xQueueCreate(10, sizeof(dataMessage_t));
+    xMainQueue = xQueueCreate(MAIN_QUEUE_LENGTH, sizeof(dataMessage_t));
     configASSERT(xMainQueue != NULL);
-    xTRVPQueue = xQueueCreate(10, sizeof(dataMessage_t));
+    xTRVPQueue = xQueueCreate(TRVP_QUEUE_LENGTH, sizeof(dataMessage_t));
     configASSERT(xTRVPQueue != NULL);
     xIHMQueue = xQueueCreate(10, sizeof(IHMOrder_t));
     configASSERT(xIHMQueue != NULL);
@@ -121,17 +121,19 @@ void initThrottleValues()
     throtmin = 0.0f;     // Min throttle limit (%)
     throtdead = 2.0f;    // Deadband around 0% p
 
-    regenRamp = 2.0f;    // %/10ms rate of change for regen
-    throtRamp = 3.0f;    // %/10ms rate of chang
-    throtRampMax = 5.0f; // %/10ms rate of chang
-    throtRampRpm = 2000; // RPM at which to switch from throtRamp to throtRampMax
+    // Rampes de montee en %/s (R1) : les 3 et 5 %/10 ms d'avant. Pas de rampe de recuperation (D3).
+    throtRampPerS = 300.0f;    // %/s sous throtRampSpeedMs
+    throtRampMaxPerS = 500.0f; // %/s au-dessus
+    throtRampSpeedMs = 41.9f;  // m/s (T18, decide le 27/10/2026, revisable : les 2000 tr/min d'avant avec D7)
 
     udcmin = 250.0f;  // Min DC bus voltage (V)
     udcmax = 410.0f;  // Max DC bus voltage (V)
     idcmin = -400.0f; // Min DC current (regen limit, A)
     idcmax = 400.0f;  // Max DC current (drive limit, A)
 
-    speedLimit = 160;     // km/h speed limiter
+    // Limiteur de vitesse (B3, T12, revisable) : 160 km/h, reduction lineaire sur les 3 derniers m/s
+    speedLimitMs = 160.0f / 3.6f;
+    speedLimitMarginMs = 3.0f;
     ThrotRpmFilt = 50.0f; // Filtered RPM used for throttle logic
 
     motorTempMax = 100.0f;

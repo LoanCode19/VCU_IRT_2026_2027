@@ -2,6 +2,7 @@
 
 #include "FreeRTOS.h"
 #include "queue.h"
+#include "task.h"
 
 #include "structs.h"
 #include "project_config.h"
@@ -24,7 +25,11 @@
 #define MAX_APPS_TIMEOUT 200
 #define MAX_WHEEL_TIMEOUT 400
 
-void printTRVPState(const TRVPState_t *state);
+void printTRVPState(const TRVPState_t *state, float pedalCmd);
+
+// Messages perdus parce que la queue de Main etait pleine (lisible au debogueur). TRVP n'attend pas : sa
+// boucle garde sa periode (R1).
+static uint32_t trvpSendFailures = 0;
 
 void TaskRawValuesProcessing(void *pvParameters)
 {
@@ -36,6 +41,7 @@ void TaskRawValuesProcessing(void *pvParameters)
     QueueHandle_t *xTRVPQueue = params->xTRVPQueue;
     QueueHandle_t *xMainQueue = params->xMainQueue;
     TaskId taskId = params->taskId;
+    TickType_t lastTrace = xTaskGetTickCount();
 
     trvpState.wheelSpeeds[WHEELFR_IDX].timeStatus = STATUS_NOT_READY;
     trvpState.wheelSpeeds[WHEELFL_IDX].timeStatus = STATUS_NOT_READY;
@@ -44,17 +50,19 @@ void TaskRawValuesProcessing(void *pvParameters)
     trvpState.appsValues[0].timeStatus = STATUS_NOT_READY;
     trvpState.appsValues[1].timeStatus = STATUS_NOT_READY;
 
+    // R1 (T3) : une passe toutes les CONTROL_PERIOD_MS, quel que soit le trafic CAN
+    TickType_t lastWake = xTaskGetTickCount();
+
     while (1)
     {
-        TickType_t timeNow = xTaskGetTickCount();
         dataMessage_t msg = {0};
-        xQueuePeek(*xTRVPQueue, &msg, TRVP_TIMEOUT);
-
-        console_print("------(B)TRVP------\n");
-
         while ((xQueueReceive(*xTRVPQueue, &msg, pdMS_TO_TICKS(0))) == pdPASS)
         {
             msg.timeStatus = STATUS_TIME_OK;
+            if ((msg.id >= wheelFRId) && (msg.id <= wheelRLId))
+            {
+                msg.data = WheelRawToMmS(msg.data); // D7 : vitesse de roue en mm/s des la reception
+            }
 
             switch (msg.id)
             {
@@ -77,15 +85,12 @@ void TaskRawValuesProcessing(void *pvParameters)
                 trvpState.appsValues[1] = msg;
                 break;
             }
-
-            console_print("trvp:Received from queue: id=%d, timestamp=%lu\n", msg.id, (unsigned long)msg.timestamp);
         }
 
         updateDataTimeStatus(trvpState.wheelSpeeds, WHEEL_COUNT, MAX_WHEEL_TIMEOUT, xTaskGetTickCount()); // if you need the actual time, call the function directly here!!!
         updateDataTimeStatus(trvpState.appsValues, APPS_COUNT, MAX_APPS_TIMEOUT, xTaskGetTickCount());
 
         trvpState.speed = calculateSpeed(trvpState.wheelSpeeds, WHEEL_COUNT);
-        console_print("trvp:Calculated speed: %lu\n", (unsigned long)trvpState.speed);
 
         // MUST give APPS values in the order defined int potmin and potMax in throttle parameters!!!
         float throttleCommand = GetUserThrottleCommand(&trvpState.appsValues[0], &trvpState.appsValues[1], trvpState.speed, trvpState.brakePedalPressed);
@@ -95,7 +100,6 @@ void TaskRawValuesProcessing(void *pvParameters)
         {
             throttleCommand = 0.0f;
         }
-        console_print("trvp:Calculated throttle command: %.2f\n", throttleCommand);
 
         dataMessage_t throttleMsg = {
             .id = processedThrottleId,
@@ -104,30 +108,42 @@ void TaskRawValuesProcessing(void *pvParameters)
 
         dataMessage_t speedMsg = {
             .id = calculatedSpeedId,
-            .data = trvpState.speed, // convert to percentage and send as int
+            .data = (int32_t)trvpState.speed, // mm/s (D7)
             .timestamp = xTaskGetTickCount()};
 
-        xQueueSend(*xMainQueue, &throttleMsg, pdMS_TO_TICKS(100));
-        xQueueSend(*xMainQueue, &speedMsg, pdMS_TO_TICKS(100));
+        if (xQueueSend(*xMainQueue, &throttleMsg, 0) != pdPASS)
+        {
+            trvpSendFailures++;
+        }
+        if (xQueueSend(*xMainQueue, &speedMsg, 0) != pdPASS)
+        {
+            trvpSendFailures++;
+        }
 
         trvpState.lastCallTimeStmp = xTaskGetTickCount();
 
-        printTRVPState(&trvpState);
+        // Traces : l'etat une fois par seconde, pas a chaque passage (T17)
+        if ((TickType_t)(trvpState.lastCallTimeStmp - lastTrace) >= pdMS_TO_TICKS(TRACE_PERIOD_MS))
+        {
+            lastTrace = trvpState.lastCallTimeStmp;
+            printTRVPState(&trvpState, throttleCommand);
+        }
 
 #ifdef USE_WDG
         // feed WDG
         wdgFeed(taskId, xTaskGetTickCount());
 #endif
 
-        console_print("------(E)TRVP------\n\n");
+        vTaskDelayUntil(&lastWake, pdMS_TO_TICKS(CONTROL_PERIOD_MS));
     }
 }
 
-void printTRVPState(const TRVPState_t *state)
+void printTRVPState(const TRVPState_t *state, float pedalCmd)
 {
     console_print("TRVP State:\n");
+    console_print("  Pedal command: %ld (0.1 %%)\n", (long)(pedalCmd * 10.0f));
     console_print("  Brake Pedal Pressed: %s\n", state->brakePedalPressed ? "Yes" : "No");
-    console_print("  Speed: %lu\n", (unsigned long)state->speed);
+    console_print("  Speed: %lu mm/s\n", (unsigned long)state->speed);
     for (int i = 0; i < WHEEL_COUNT; i++)
     {
         console_print("  Wheel %d Speed: %ld, Time Status: %d\n", i, (long)state->wheelSpeeds[i].data, state->wheelSpeeds[i].timeStatus);

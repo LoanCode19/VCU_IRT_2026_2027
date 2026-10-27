@@ -2,6 +2,7 @@
 
 #include "FreeRTOS.h"
 #include "queue.h"
+#include "task.h"
 
 #include "structs.h"
 #include "project_config.h"
@@ -13,7 +14,7 @@
 #include "my_fp.h"
 #include "project_config.h"
 
-void PrintMainState(const MainState_t *mainState);
+void PrintMainState(const MainState_t *mainState, float torqueCmd);
 
 // Consignes perdues parce que la queue de CanTx etait pleine (lisible au debogueur)
 static uint32_t canTxSendFailures = 0;
@@ -35,8 +36,9 @@ void TaskMain(void *pvParameters)
 {
     MainState_t mainState = {0};
     bool faultLightOn = false; // dernier ordre FaultLight envoye a l'IHM
+    float torqueCmd = 0.0f;    // derniere consigne envoyee, pour les traces
 
-    TickType_t timeNow = xTaskGetTickCount();
+    TickType_t lastTrace = xTaskGetTickCount();
 
     MainParams_t *params = (MainParams_t *)pvParameters;
     QueueHandle_t *xMainQueue = params->xMainQueue;
@@ -51,14 +53,15 @@ void TaskMain(void *pvParameters)
     mainState.speed.timeStatus = STATUS_NOT_READY;
     mainState.ThrottleCommand.timeStatus = STATUS_NOT_READY;
 
+    // R1 (T3) : une passe toutes les CONTROL_PERIOD_MS, quel que soit le trafic CAN. La premiere passe
+    // compte pour une periode : la rampe avance des le premier passage.
+    TickType_t lastWake = xTaskGetTickCount();
+    TickType_t lastPass = lastWake - pdMS_TO_TICKS(CONTROL_PERIOD_MS);
+
     while (1)
     {
-        // console_print((ledState = !ledState) ? "Led2 ON\n" : "Led2 OFF\n");
+        TickType_t now = xTaskGetTickCount();
         dataMessage_t msg = {0};
-        xQueuePeek(*xMainQueue, &msg, TRVP_TIMEOUT);
-
-        console_print("------(B)MainState------\n");
-
         while ((xQueueReceive(*xMainQueue, &msg, pdMS_TO_TICKS(0))) == pdPASS)
         {
             msg.timeStatus = STATUS_TIME_OK;
@@ -80,13 +83,12 @@ void TaskMain(void *pvParameters)
                 mainState.ThrottleCommand = msg;
                 break;
             }
-            console_print("Received from queue: id=%d, timestamp=%lu\n", msg.id, (unsigned long)msg.timestamp);
         }
 
         // S5 (T1, T2) : une donnee absente ou perimee coupe le couple, temperatures comprises (T1). Une
         // consigne 0 part quand meme (l'onduleur doit recevoir 0, pas un silence), et le voyant defaut
         // s'allume. La demande passe a 0 dans le calcul : la rampe repartira de 0 au retour des donnees.
-        bool inputsValid = MainInputsValid(&mainState, xTaskGetTickCount());
+        bool inputsValid = MainInputsValid(&mainState, now);
         if (inputsValid == faultLightOn)
         {
             IHMOrder_t faultOrder = {.order = FaultLight, .state = !inputsValid};
@@ -96,47 +98,49 @@ void TaskMain(void *pvParameters)
             }
         }
 
-        if (mainState.lastCallTimeStmp - xTaskGetTickCount() > pdMS_TO_TICKS(5))
+        // Une consigne a chaque periode, meme sans message (R1). La rampe avance du temps reellement ecoule.
+        float request = inputsValid ? FP_TOFLOAT(mainState.ThrottleCommand.data) : 0.0f;
+        uint32_t elapsedMs = (uint32_t)((now - lastPass) * portTICK_PERIOD_MS);
+        lastPass = now;
+        float speedMs = (float)mainState.speed.data / 1000.0f; // mm/s dans les messages, m/s dans le calcul (D7)
+        float throttle = ProcessThrottle(request, speedMs, mainState.motorTemp.data, mainState.inverterTemp.data,
+                                         mainState.Voltage.data, elapsedMs);
+        if (!inputsValid)
         {
-            float request = inputsValid ? FP_TOFLOAT(mainState.ThrottleCommand.data) : 0.0f;
-            float throttle = ProcessThrottle(request, mainState.speed.data, mainState.motorTemp.data, mainState.inverterTemp.data, mainState.Voltage.data);
-            if (!inputsValid)
-            {
-                throttle = 0.0f;
-            }
-            dataMessage_t throttleMsg = {
-                .id = inverterTorqueCmdId,    // Throttle command message ID
-                .data = FP_FROMFLT(throttle), // Convert to percentage and scale
-                .timestamp = xTaskGetTickCount()
-
-            };
-
-            if (xQueueSend(*xCanTxQueue, &throttleMsg, 0) != pdPASS)
-            {
-                canTxSendFailures++; // queue pleine : consigne perdue, mais Main continue (R3)
-            }
-            console_print("Calculated throttle command: %f\n", throttle);
+            throttle = 0.0f;
         }
+        dataMessage_t throttleMsg = {
+            .id = inverterTorqueCmdId,    // Throttle command message ID
+            .data = FP_FROMFLT(throttle), // Convert to percentage and scale
+            .timestamp = now};
 
-        PrintMainState(&mainState);
+        if (xQueueSend(*xCanTxQueue, &throttleMsg, 0) != pdPASS)
+        {
+            canTxSendFailures++; // queue pleine : consigne perdue, mais Main continue (R3)
+        }
+        torqueCmd = throttle;
+
+        // Traces : l'etat une fois par seconde, pas a chaque passage (T17)
+        if ((TickType_t)(now - lastTrace) >= pdMS_TO_TICKS(TRACE_PERIOD_MS))
+        {
+            lastTrace = now;
+            PrintMainState(&mainState, torqueCmd);
+        }
 
 #ifdef USE_WDG
         // feed WDG
         wdgFeed(taskId, xTaskGetTickCount());
 #endif
 
-        console_print("------(E)MainState------\n\n");
+        vTaskDelayUntil(&lastWake, pdMS_TO_TICKS(CONTROL_PERIOD_MS));
     }
-
-    // xTaskDelayUntil(&timeNow, pdMS_TO_TICKS(1000));
 }
 
 // function, to print current state of the motor controller (for debug)
-void PrintMainState(const MainState_t *mainState)
+void PrintMainState(const MainState_t *mainState, float torqueCmd)
 {
-    // add timestate to each print
-
     console_print("Main State:\n");
+    console_print("  Torque command: %ld (0.1 %%)\n", (long)(torqueCmd * 10.0f));
     console_print("  Throttle Command: %ld state:%d\n ", (long)mainState->ThrottleCommand.data, mainState->ThrottleCommand.timeStatus);
     console_print("  Speed: %ld state:%d\n", (long)mainState->speed.data, mainState->speed.timeStatus);
     console_print("  Brake Pedal Pressed: %s\n", mainState->brakePedalPressed ? "Yes" : "No");
