@@ -21,6 +21,11 @@
 #define CAN_ID_APPS1 0x010U
 #define CAN_ID_APPS2 0x011U
 
+// Etat du vehicule, trame PROVISOIRE en attendant D5 (T19, decide le 27/10/2026, revisable) : toutes les 10 ms,
+// 4 octets, 0 ou 1 : TS actif, SDC ferme, frein appuye, interrupteur R2D sur ON. L'interrupteur sera lu sur une
+// entree numerique de la carte quand l'electronique aura choisi la broche (T22).
+#define CAN_ID_VEHICLE_STATE 0x012U
+
 #define CAN_ID_WHEEL_FR 0x500U
 #define CAN_ID_WHEEL_FL 0x501U
 #define CAN_ID_WHEEL_RR 0x502U

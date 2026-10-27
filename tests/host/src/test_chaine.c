@@ -15,6 +15,7 @@
 #include "TaskMain.h"
 #include "TaskRawValuesProcessing.h"
 #include "test_app.h"
+#include "test_vehicle.h"
 #include "vcu_test.h"
 
 #define T_NOW 3000U // ms, assez loin de 0 pour dater des messages "vieux"
@@ -32,6 +33,7 @@ typedef struct
     TickType_t temperatureTimestamp;
     TickType_t voltageTimestamp;
     int32_t wheelRaw; // valeur brute des 4 capteurs de roue
+    bool withoutR2D;  // TS actif, mais pas de sequence R2D (S3a)
 } ChainInputs_t;
 
 static void Setup(void)
@@ -51,7 +53,8 @@ static void Push(QueueHandle_t queue, MessageIds id, int32_t data, TickType_t ti
     (void)xQueueSend(queue, &msg, 0);
 }
 
-// Une passe de TRVP puis une passe de Main. Renvoie false si aucune consigne n'est sortie.
+// Une passe de TRVP, puis Main pendant la sequence R2D (T8). Renvoie false si aucune consigne n'est sortie a la
+// derniere passe.
 static bool RunChain(ChainInputs_t in, float *torque)
 {
     Setup();
@@ -63,6 +66,7 @@ static bool RunChain(ChainInputs_t in, float *torque)
     Push(xTRVPQueue, wheelFLId, in.wheelRaw, T_NOW);
     Push(xTRVPQueue, wheelRRId, in.wheelRaw, T_NOW);
     Push(xTRVPQueue, wheelRLId, in.wheelRaw, T_NOW);
+    Push(xTRVPQueue, brakePressedId, 0, T_NOW); // frein relache
     if (in.sendTemperatures)
     {
         Push(xMainQueue, motor_tempId, 40, in.temperatureTimestamp);
@@ -71,15 +75,8 @@ static bool RunChain(ChainInputs_t in, float *torque)
     }
 
     RunTaskOnce(TaskRawValuesProcessing, &sTrvpParams);
-    RunTaskOnce(TaskMain, &sMainParams);
-
-    dataMessage_t cmd = {0};
-    if (xQueueReceive(xCanTxQueue, &cmd, 0) != pdPASS)
-    {
-        return false;
-    }
-    *torque = FP_TOFLOAT(cmd.data);
-    return true;
+    TestRunMain(&sMainParams, TEST_R2D_PASSES, in.withoutR2D ? TestTsOnly : TestR2DEntry);
+    return TestLastTorque(torque);
 }
 
 // Valeur brute d'un capteur de roue pour une vitesse en m/s, avec l'hypothese de D7 (tr/min de roue)
@@ -93,22 +90,22 @@ static int32_t WheelRawFor(float speedMs)
 static TickType_t MainSilentMaxGap(unsigned *count)
 {
     Setup();
-    vTestSetDelayCallsBeforeEscape(9U, NULL);  // boucle periodique : 10 passages
     vTestSetBlockingTimeoutsBeforeEscape(1U); // boucle reveillee par la queue : une attente de 100 ms
-    RunTaskOnce(TaskMain, &sMainParams);
-    vTestSetDelayCallsBeforeEscape(0U, NULL);
+    TestRunMain(&sMainParams, 10U, NULL);     // boucle periodique : 10 passages
     vTestSetBlockingTimeoutsBeforeEscape(0U);
 
     TickType_t previous = T_NOW;
     TickType_t maxGap = 0;
-    dataMessage_t cmd = {0};
     *count = 0;
-    while (xQueueReceive(xCanTxQueue, &cmd, 0) == pdPASS)
+    for (unsigned i = 0; i < sTestRun.passes; i++)
     {
-        TickType_t gap = cmd.timestamp - previous;
-        maxGap = (gap > maxGap) ? gap : maxGap;
-        previous = cmd.timestamp;
-        (*count)++;
+        if (sTestRun.torqueSent[i])
+        {
+            TickType_t gap = sTestRun.torqueTick[i] - previous;
+            maxGap = (gap > maxGap) ? gap : maxGap;
+            previous = sTestRun.torqueTick[i];
+            (*count)++;
+        }
     }
     TickType_t end = T_NOW + 100U;
     return ((end > previous) && ((end - previous) > maxGap)) ? (end - previous) : maxGap;
@@ -117,16 +114,7 @@ static TickType_t MainSilentMaxGap(unsigned *count)
 // Ordre envoye par Main a l'IHM pour le voyant defaut, apres RunChain : -1 aucun, 0 eteint, 1 allume
 static int FaultLightOrder(void)
 {
-    IHMOrder_t order;
-    int state = -1;
-    while (xQueueReceive(xIHMQueue, &order, 0) == pdPASS)
-    {
-        if (order.order == FaultLight)
-        {
-            state = order.state ? 1 : 0;
-        }
-    }
-    return state;
+    return TestLastFaultLight();
 }
 
 int main(void)
@@ -135,7 +123,7 @@ int main(void)
     float torque = 0.0f;
 
     // Precondition de tout le secteur : APPS a 40 % -> une consigne > 0 sort vers l'onduleur.
-    // Quand le mode R2D existera (S3), ce test devra d'abord faire la sequence R2D.
+    // RunChain fait la sequence R2D (T8) avant d'attendre du couple.
     bool sent = RunChain((ChainInputs_t){40.0f, true, T_NOW, T_NOW}, &torque);
     bool chainWorks = vt_check("B2a", "-", sent && (torque > 0.0f),
                                "APPS 40 %%, donnees fraiches -> consigne %s %.1f %% (attendu > 0)",
@@ -190,9 +178,9 @@ int main(void)
              "%.1f %% (attendu > 0, puis 0)",
              speedLimitMs / 2.0f, half, over);
 
-    sent = RunChain((ChainInputs_t){40.0f, true, T_NOW, T_NOW}, &torque);
+    sent = RunChain((ChainInputs_t){40.0f, true, T_NOW, T_NOW, 0, true}, &torque);
     vt_check("S3a", "EV 4.11.7", !sent || torque <= 0.0f,
-             "aucune sequence R2D (frein + bouton) -> consigne %.1f %% (attendu 0)", torque);
+             "TS actif, aucune sequence R2D (frein + interrupteur) -> consigne %.1f %% (attendu 0)", torque);
 
     return vt_end();
 }

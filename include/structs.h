@@ -48,6 +48,15 @@ typedef enum messageIds
 
     inverterTorqueCmdId,
 
+    // Etat du vehicule (trame provisoire 0x012 en attendant D5, T19) : 0 ou 1
+    tsActiveId,     // TS actif
+    sdcClosedId,    // circuit d'arret ferme
+    brakePressedId, // frein appuye
+    r2dSwitchId,    // interrupteur R2D sur ON (T22)
+
+    appsFaultId,      // TRVP -> Main : faute APPS confirmee (S1, D2), pour le voyant defaut
+    driveEnableCmdId, // Main -> CanTx : "Drive enable" du DTI (T20)
+
 } MessageIds;
 
 typedef struct

@@ -20,6 +20,7 @@
 #include "TaskIHM.h"
 #include "TaskCoolingSystem.h"
 #include "test_app.h"
+#include "test_vehicle.h"
 #include "vcu_test.h"
 
 #define ADC_MAX 4095        // CAN 12 bits du STM32F407
@@ -70,8 +71,9 @@ static void Push(QueueHandle_t queue, MessageIds id, int32_t data, TickType_t ti
     (void)xQueueSend(queue, &msg, 0);
 }
 
-// Une passe de TaskMain avec une consigne pedale deja calculee. Renvoie la consigne onduleur.
-static bool RunMain(float pedalPercent, TickType_t commandTimestamp, float *torque)
+// TaskMain avec une consigne pedale deja calculee, pendant la sequence R2D (T8) si enterR2D, sinon TS actif sans
+// sequence. Renvoie la consigne onduleur de la derniere passe.
+static bool RunMain(float pedalPercent, TickType_t commandTimestamp, bool enterR2D, float *torque)
 {
     Setup();
     Push(xMainQueue, processedThrottleId, FP_FROMFLT(pedalPercent), commandTimestamp);
@@ -79,15 +81,8 @@ static bool RunMain(float pedalPercent, TickType_t commandTimestamp, float *torq
     Push(xMainQueue, motor_tempId, 40, T_NOW);
     Push(xMainQueue, inverter_tempId, 40, T_NOW);
     Push(xMainQueue, voltageId, 350, T_NOW);
-    RunTaskOnce(TaskMain, &sMainParams);
-
-    dataMessage_t cmd = {0};
-    if (xQueueReceive(xCanTxQueue, &cmd, 0) != pdPASS)
-    {
-        return false;
-    }
-    *torque = FP_TOFLOAT(cmd.data);
-    return true;
+    TestRunMain(&sMainParams, TEST_R2D_PASSES, enterR2D ? TestR2DEntry : TestTsOnly);
+    return TestLastTorque(torque);
 }
 
 // Un appel de ProcessThrottle() a l'arret, temperatures et tension nominales, elapsedMs apres le precedent
@@ -194,14 +189,14 @@ static void Test_T11_9(void)
     // T 11.9.4 : consigne vieille de plus de 500 ms -> pas de couple (dans TaskMain)
     float fresh = 0.0f;
     float stale = 0.0f;
-    bool sentFresh = RunMain(40.0f, T_NOW, &fresh);
+    bool sentFresh = RunMain(40.0f, T_NOW, true, &fresh);
     if (!sentFresh || fresh <= 0.0f)
     {
         vt_blocked("FS-11", "T 11.9.4", "TaskMain ne produit aucun couple meme avec une consigne fraiche");
     }
     else
     {
-        bool sentStale = RunMain(40.0f, T_NOW - (SCS_MAX_DELAY + 100U), &stale);
+        bool sentStale = RunMain(40.0f, T_NOW - (SCS_MAX_DELAY + 100U), true, &stale);
         vt_check("FS-11", "T 11.9.4", !sentStale || stale <= 0.0f,
                  "Main : consigne pedale vieille de 600 ms -> couple %.1f %% (attendu 0 ; consigne fraiche : %.1f %%)",
                  stale, fresh);
@@ -250,9 +245,9 @@ static void Test_T6(void)
 static void Test_EV4_11(void)
 {
     float torque = 0.0f;
-    bool sent = RunMain(40.0f, T_NOW, &torque);
+    bool sent = RunMain(40.0f, T_NOW, false, &torque);
     vt_check("FS-15", "EV 4.11.7", !sent || torque <= 0.0f,
-             "pedale 40 %% sans sequence R2D (TS actif + frein + bouton) -> couple %.1f %% (attendu 0)", torque);
+             "TS actif, pedale 40 %% sans sequence R2D (frein + interrupteur) -> couple %.1f %% (attendu 0)", torque);
 
     vt_blocked("FS-16", "EV 4.11.8",
                "sortie du R2D a l'ouverture du SDC : le VCU ne lit pas l'etat du SDC (entree a definir)");
@@ -270,7 +265,7 @@ static void Test_EV4_11(void)
 }
 
 // ----------------------------------------------------------------------------------------------
-// IN 9.2.1 : ventilateurs allumes pendant le test de pluie (voiture froide, TS actif)
+// IN 9.2.1 : ventilateurs allumes pendant le test de pluie (voiture froide, TS actif, pas en R2D : IN 9.2.2, 9.2.4)
 
 static void Test_IN9(void)
 {
@@ -279,6 +274,7 @@ static void Test_IN9(void)
     CoolingParams_t coolingParams = {&coolingQueue, TaskCoolingId};
     Push(coolingQueue, motor_tempId, 20, T_NOW);
     Push(coolingQueue, inverter_tempId, 20, T_NOW);
+    Push(coolingQueue, tsActiveId, 1, T_NOW);
     RunTaskOnce(TaskCoolingSystem, &coolingParams);
 
     bool fansOn = false;
@@ -291,7 +287,7 @@ static void Test_IN9(void)
         }
     }
     vt_check("FS-18", "IN 9.2.1", fansOn,
-             "voiture froide (20 degC) -> ventilateurs %s (attendu : pouvoir les forcer ON pour le test de pluie)",
+             "TS actif, voiture froide (20 degC) -> ventilateurs %s (attendu ON pour le test de pluie)",
              fansOn ? "ON" : "OFF, aucune commande pour les forcer");
 }
 

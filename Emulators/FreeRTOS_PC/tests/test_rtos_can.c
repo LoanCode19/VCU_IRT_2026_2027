@@ -30,17 +30,22 @@ static void TestCan_Burst(void)
 // Chaine complete : capteurs et onduleur simules -> le VCU emet sa consigne vers l'onduleur
 static void TestCan_TorqueFrame(void)
 {
-    // APPS a 40 % de la course, d'apres la calibration de initThrottleValues() (appelee par MainApp)
+    // APPS a 40 % de la course, d'apres la calibration de initThrottleValues() (appelee par MainApp). Pedale
+    // relachee pendant la sequence R2D : la rafale de E-R2a a laisse APPS1 seul, une incoherence a effacer tout
+    // de suite (sinon elle serait confirmee, D2).
     int32_t apps1 = (int32_t)(potmin[0] + (potmax[0] - potmin[0]) * 0.4f);
     int32_t apps2 = (int32_t)(potmin[1] + (potmax[1] - potmin[1]) * 0.4f);
-    EmuCan_SetPeriodic(CAN_ID_APPS1, 10U, apps1);
-    EmuCan_SetPeriodic(CAN_ID_APPS2, 10U, apps2);
+    EmuCan_SetPeriodic(CAN_ID_APPS1, 10U, potmin[0]);
+    EmuCan_SetPeriodic(CAN_ID_APPS2, 10U, potmin[1]);
     EmuCan_SetPeriodic(CAN_ID_WHEEL_FR, 10U, 0);
     EmuCan_SetPeriodic(CAN_ID_WHEEL_FL, 10U, 0);
     EmuCan_SetPeriodic(CAN_ID_WHEEL_RR, 10U, 0);
     EmuCan_SetPeriodic(CAN_ID_WHEEL_RL, 10U, 0);
     EmuDti_SetTemperatures(40, 40, 100U);
     EmuDti_SetVoltage(350, 100U);
+    EmuVehicle_EnterR2D();
+    EmuCan_SetValue(CAN_ID_APPS1, apps1);
+    EmuCan_SetValue(CAN_ID_APPS2, apps2);
 
     uint32_t start = EmuNowMs();
     uint32_t sentBefore = EmuCan_TxCount(CAN_ID_DTI_SET_REL_CURRENT); // ne compter que les trames de ce test
@@ -80,6 +85,7 @@ static void TestCan_FastSensors(void)
     EmuCan_SetPeriodic(CAN_ID_WHEEL_RL, 5U, 0);
     EmuDti_SetTemperatures(40, 40, 5U);
     EmuDti_SetVoltage(350, 5U);
+    EmuVehicle_SetState(true, true, false, true, 5U); // l'etat du vehicule aussi, deux fois plus vite
     EmuWaitMs(100); // regime etabli
 
     uint32_t trvpBefore = canRxStats.lostTrvp;
