@@ -58,30 +58,18 @@ void TaskRawValuesProcessing(void *pvParameters)
         while ((xQueueReceive(*xTRVPQueue, &msg, pdMS_TO_TICKS(0))) == pdPASS)
         {
             msg.timeStatus = STATUS_TIME_OK;
-            if ((msg.id >= wheelFRId) && (msg.id <= wheelRLId))
-            {
-                msg.data = WheelRawToMmS(msg.data); // D7 : vitesse de roue en mm/s des la reception
-            }
-
             switch (msg.id)
             {
-            case wheelFRId: // motor temp
-                trvpState.wheelSpeeds[WHEELFR_IDX] = msg;
+            case wheelFRId:
+            case wheelFLId:
+            case wheelRRId:
+            case wheelRLId:
+                msg.data = WheelRawToMmS(msg.data); // D7 : vitesse de roue en mm/s des la reception
+                trvpState.wheelSpeeds[msg.id - wheelFRId] = msg;
                 break;
-            case wheelFLId: // inverter temp
-                trvpState.wheelSpeeds[WHEELFL_IDX] = msg;
-                break;
-            case wheelRRId: // voltage
-                trvpState.wheelSpeeds[WHEELRR_IDX] = msg;
-                break;
-            case wheelRLId: // calculated speed
-                trvpState.wheelSpeeds[WHEELRL_IDX] = msg;
-                break;
-            case apps1Id: // calculated throttle command
-                trvpState.appsValues[0] = msg;
-                break;
-            case apps2Id: // calculated throttle command
-                trvpState.appsValues[1] = msg;
+            case apps1Id:
+            case apps2Id:
+                trvpState.appsValues[msg.id - apps1Id] = msg;
                 break;
             case brakePressedId:
                 trvpState.brake = msg;

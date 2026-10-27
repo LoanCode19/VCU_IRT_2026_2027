@@ -8,27 +8,15 @@
 #include "utils.h"
 #include "TaskDigitalSignals.h"
 
+// Etat demande de chaque sortie (index : Order_t), lisible au debogueur (Live Expressions). Les broches ne sont
+// pas encore choisies (D5) : aucune GPIO n'est pilotee.
+volatile bool digitalOutputs[OUTPUT_COUNT];
+
 static void setOutputGpio(Order_t order, bool state)
 {
-    switch (order)
+    if ((unsigned)order < (unsigned)OUTPUT_COUNT)
     {
-    case FaultLight:
-        // TODO: drive the fault light GPIO with `state`
-        break;
-    case CoolingPump:
-        // TODO: drive the cooling pump GPIO with `state`
-        break;
-    case CoolingFans:
-        // TODO: drive the cooling fans GPIO with `state`
-        break;
-    case R2Dbuzzer:
-        // TODO: drive the R2D buzzer GPIO with `state`
-        break;
-    case HBLed:
-        // TODO: drive the heartbeat LED GPIO with `state`
-        break;
-    default:
-        break;
+        digitalOutputs[order] = state; // TODO (D5) : piloter la broche de la sortie
     }
 }
 

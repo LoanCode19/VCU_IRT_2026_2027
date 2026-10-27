@@ -31,6 +31,7 @@ typedef enum TasksIds
 } TaskId; // MUST BEGIN AT ZERO
 // enums
 
+// Les quatre roues, puis les deux APPS, se suivent dans cet ordre : TRVP s'en sert comme index de tableau
 typedef enum messageIds
 {
     wheelFRId,
@@ -90,6 +91,7 @@ typedef enum Order
     R2Dbuzzer = 3,
     HBLed = 4,
 
+    OUTPUT_COUNT, // nombre de sorties : toujours en dernier
 } Order_t;
 
 typedef struct
