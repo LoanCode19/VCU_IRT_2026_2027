@@ -35,6 +35,7 @@ extern int accelmax;
 extern int accelflt;
 extern float udcmin;
 extern float udcmax;
+extern float udcDerateMarginV;
 extern float idcmin;
 extern float idcmax;
 extern float speedLimitMs;

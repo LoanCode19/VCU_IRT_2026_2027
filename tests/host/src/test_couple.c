@@ -91,6 +91,16 @@ static void TestCouple_ElectricalLimits(void)
     vt_check("S8a", "EV 2.2", torque < 30.0f,
              "consigne 30 %%, Udc 200 V (< udcmin %.0f V) -> couple %.1f %% (attendu reduit)", udcmin, torque);
 
+    // S8c (T11) : 10 V au-dessus de udcmin -> la moitie de la consigne ; 25 V au-dessus -> rien n'est reduit
+    ResetState();
+    float half = SettledProcess(100.0f, 0, NOMINAL_TEMP, NOMINAL_TEMP, udcmin + 10.0f);
+    ResetState();
+    float full = SettledProcess(100.0f, 0, NOMINAL_TEMP, NOMINAL_TEMP, udcmin + 25.0f);
+    vt_check("S8c", "-", (half > 49.0f) && (half < 51.0f) && (full > 99.0f),
+             "consigne 100 %%, Udc a udcmin + 10 V -> couple %.1f %% ; a udcmin + 25 V -> %.1f %% (attendu 50, puis "
+             "100)",
+             half, full);
+
     vt_blocked("S8b", "EV 2.2.1/2",
                "limite 80 kW / 500 A : ProcessThrottle() ne recoit pas le courant Idc, test a ecrire avec la future limitation");
 }

@@ -27,6 +27,7 @@ int accelmax;
 int accelflt;
 float udcmin;
 float udcmax;
+float udcDerateMarginV;
 float idcmin;
 float idcmax;
 float speedLimitMs;
@@ -211,6 +212,32 @@ void SpeedLimitCommand(float *finalSpnt, float speedMs)
     if (speedMs > speedLimitMs - speedLimitMarginMs)
     {
         float maxAllowed = 100.0f * (speedLimitMs - speedMs) / speedLimitMarginMs;
+        *finalSpnt = MIN(*finalSpnt, maxAllowed);
+    }
+}
+
+/**
+ * @brief Reduction sur tension batterie basse (S8, T11) : rien au-dessus de udcmin + udcDerateMarginV, puis une
+ * baisse lineaire jusqu'a 0 a udcmin. Tirer fort pres de la tension minimale fait encore chuter la tension : les
+ * cellules passeraient sous leur minimum, et le BMS ouvrirait le SDC.
+ *
+ * @param finalSpnt consigne en %, reduite sur place si elle est positive
+ * @param udc tension du bus continu, en V
+ */
+void UdcLimitCommand(float *finalSpnt, float udc)
+{
+    if (*finalSpnt <= 0.0f) // seule une demande de couple positif est limitee
+    {
+        return;
+    }
+    if (udc <= udcmin)
+    {
+        *finalSpnt = 0.0f;
+        return;
+    }
+    if (udc < udcmin + udcDerateMarginV)
+    {
+        float maxAllowed = 100.0f * (udc - udcmin) / udcDerateMarginV;
         *finalSpnt = MIN(*finalSpnt, maxAllowed);
     }
 }

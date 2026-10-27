@@ -107,7 +107,7 @@ float ProcessThrottle(float finalSpnt, float speedMs, int motorTemp, int inverte
 
     float rampPerS = (speedMs < throtRampSpeedMs) ? throtRampPerS : throtRampMaxPerS; // pente de la montee, en %/s
 
-    // Throttle::UdcLimitCommand(finalSpnt,Variable             s::GetFloat(Variables::udc));
+    UdcLimitCommand(&finalSpnt, voltage); // S8 (T11) : tension batterie basse
     // Throttle::IdcLimitCommand(finalSpnt, ABS(Variables::GetFloat(Variables::idc)));
     SpeedLimitCommand(&finalSpnt, ABS(speedMs));
 
