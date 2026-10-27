@@ -1,5 +1,5 @@
 // Secteur : pedale d'accelerateur (APPS) et frein
-// Code teste : GetUserThrottleCommand() (src/utils.c), CheckAndLimitRange() / CalcThrottle() (src/throttle.c)
+// Code teste : GetUserThrottleCommand() (src/utils.c), AppsInRange() / AppsClamp() / CalcThrottle() (src/throttle.c)
 // Problemes : S1, S4, S6, S9 de AUDIT_VCU.md
 
 #include <stdbool.h>

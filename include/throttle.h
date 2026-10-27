@@ -4,7 +4,8 @@
 #ifndef THROTTLE_H
 #define THROTTLE_H
 
-bool CheckAndLimitRange(int32_t *potval, int potIdx);
+bool AppsInRange(int32_t raw, int potIdx);
+int32_t AppsClamp(int32_t raw, int potIdx);
 float NormalizeThrottle(int potval, int potIdx);
 bool TemperatureDerate(int temp, int tempMax, float *finalSpnt);
 float RampThrottle(float finalSpnt);

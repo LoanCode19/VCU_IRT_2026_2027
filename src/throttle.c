@@ -68,37 +68,39 @@ float throtRampMax;
 float motorTempMax;
 float inverterTempMax;
 
-/**
- * @brief Check the throttle input for sanity and limit the range to min/max values
- *
- * @param potval Pointer to the throttle input array, range should be [potMin, potMax].
- * @param potIdx Index of the throttle input array, range is [0, 1].
- * @return true if the throttle input was within bounds (accounting for POT_SLACK).
- * @return false the throttle was too far out of bounds. Setting potval to the minimum.
- */
-bool CheckAndLimitRange(int32_t *potval, int potIdx)
+// Bornes de la course d'un APPS, dans l'ordre croissant : un capteur peut etre monte a l'envers
+// (potmin > potmax)
+static void AppsBounds(int potIdx, int *low, int *high)
 {
-    // The range check accounts for inverted throttle pedals, where the minimum
-    // value is higher than the maximum. To accomodate for that, the potMin and potMax
-    // variables are set for internal use.
-    int potMin = potmax[potIdx] > potmin[potIdx] ? potmin[potIdx] : potmax[potIdx];
-    int potMax = potmax[potIdx] > potmin[potIdx] ? potmax[potIdx] : potmin[potIdx];
+    *low = (potmax[potIdx] > potmin[potIdx]) ? potmin[potIdx] : potmax[potIdx];
+    *high = (potmax[potIdx] > potmin[potIdx]) ? potmax[potIdx] : potmin[potIdx];
+}
 
-    if (((*potval + POT_SLACK) < potMin) || (*potval > (potMax + POT_SLACK)))
-    {
-        *potval = potMin;
-        return false;
-    }
-    else if (*potval < potMin)
-    {
-        *potval = potMin;
-    }
-    else if (*potval > potMax)
-    {
-        *potval = potMax;
-    }
+// Valeur brute dans la fenetre acceptee : la course, elargie de POT_SLACK de chaque cote.
+// Ne modifie jamais la valeur recue (S4) : un message garde sa valeur d'un cycle a l'autre.
+bool AppsInRange(int32_t raw, int potIdx)
+{
+    int low;
+    int high;
+    AppsBounds(potIdx, &low, &high);
+    return ((raw + POT_SLACK) >= low) && (raw <= (high + POT_SLACK));
+}
 
-    return true;
+// Valeur brute bornee a la course, pour le calcul du pourcentage
+int32_t AppsClamp(int32_t raw, int potIdx)
+{
+    int low;
+    int high;
+    AppsBounds(potIdx, &low, &high);
+    if (raw < low)
+    {
+        return low;
+    }
+    if (raw > high)
+    {
+        return high;
+    }
+    return raw;
 }
 
 /**

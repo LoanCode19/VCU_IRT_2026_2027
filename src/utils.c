@@ -15,7 +15,7 @@
 
 #define MAX_DIFF_WHEELS 30
 
-float GetUserThrottleCommand(dataMessage_t *pot1val, dataMessage_t *pot2val, int speed, bool brake)
+float GetUserThrottleCommand(const dataMessage_t *pot1val, const dataMessage_t *pot2val, int speed, bool brake)
 {
     if (pot1val == NULL || pot2val == NULL)
     {
@@ -26,14 +26,15 @@ float GetUserThrottleCommand(dataMessage_t *pot1val, dataMessage_t *pot2val, int
     bool pot1TimeValid = (pot1val->timeStatus == STATUS_TIME_OK);
     bool pot2TimeValid = (pot2val->timeStatus == STATUS_TIME_OK);
 
-    bool inRange1 = CheckAndLimitRange(&pot1val->data, 0);
-    bool inRange2 = CheckAndLimitRange(&pot2val->data, 1);
+    bool inRange1 = AppsInRange(pot1val->data, 0);
+    bool inRange2 = AppsInRange(pot2val->data, 1);
 
     bool pot1Valid = pot1TimeValid && inRange1;
     bool pot2Valid = pot2TimeValid && inRange2;
 
-    float pot1nom = NormalizeThrottle(pot1val->data, 0); ////normaliser pour avoir une valeure entre 0 et 100% en fonction de potmin
-    float pot2nom = NormalizeThrottle(pot2val->data, 1); // et pot max
+    // Pourcentage de la course (0 a 100 %), calcule sur la valeur bornee
+    float pot1nom = NormalizeThrottle(AppsClamp(pot1val->data, 0), 0);
+    float pot2nom = NormalizeThrottle(AppsClamp(pot2val->data, 1), 1);
 
     // when there's something wrong with the dual throttle values,
     // we try to make the best of it and use the valid one
