@@ -1,6 +1,6 @@
 // Secteur : watchdog
 // Code teste : TaskWDG (src/TaskWDG.c) et l'alimentation du watchdog par TaskCanRx
-// Problemes : W1, W3, W4, W5 de AUDIT_VCU.md (W2 est verifie par le test statique)
+// Problemes : W1, W3, W4, W5, W6 de AUDIT_VCU.md (W2 est verifie par le test statique)
 //
 // Compile avec -DUSE_WDG et -DrefreshIWDG=test_refreshIWDG : ce renommage remplace le
 // rafraichissement de l'IWDG de la carte par une fonction de test qui compte les appels.
@@ -164,6 +164,41 @@ static void TestWatchdog_OutputTasksWithoutMessages(void)
              fed ? "oui" : "non");
 }
 
+// Avec du trafic CAN, les taches rapides donnent signe de vie a chaque trame : 3 fois chacune par
+// periode de TaskWDG, puis chaque tache lente une fois
+static void FeedWithTraffic(TickType_t now)
+{
+    static const TaskId fastTasks[] = {TaskCanRxId, TaskTRVPId, TaskMainId, TaskCanTxId};
+    static const TaskId slowTasks[] = {TaskIHMId, TaskDigitalSignalsId, TaskCoolingId};
+    for (unsigned round = 0; round < 3U; round++)
+    {
+        for (unsigned i = 0; i < sizeof(fastTasks) / sizeof(fastTasks[0]); i++)
+        {
+            Feed(fastTasks[i], now);
+        }
+    }
+    for (unsigned i = 0; i < sizeof(slowTasks) / sizeof(slowTasks[0]); i++)
+    {
+        Feed(slowTasks[i], now);
+    }
+}
+
+// W6 : les signes de vie des taches lentes ne doivent pas se perdre derriere ceux des taches rapides
+static void TestWatchdog_TrafficKeepsSlowTasks(void)
+{
+    Setup();
+    wdgRegisterTasks();     // les 7 taches, avec leurs delais, comme MainApp()
+    vTestSetTickCount(2000U); // une tache qui n'a jamais donne signe de vie est deja en retard
+    vTestSetDelayCallsBeforeEscape(3, FeedWithTraffic); // 3 periodes de TaskWDG
+    RunTaskOnce(TaskWDG, &sWdgParams);
+    vTestSetDelayCallsBeforeEscape(0, NULL);
+
+    vt_check("W6a", "-", sRefreshCount == 3,
+             "3 periodes avec trafic (12 signes de vie des taches rapides, puis 1 par tache lente) -> IWDG rafraichi "
+             "%u fois (attendu 3 : aucune tache lente ne doit paraitre en retard)",
+             sRefreshCount);
+}
+
 int main(void)
 {
     vt_begin("Watchdog");
@@ -173,6 +208,7 @@ int main(void)
     TestWatchdog_NoRefreshWhenStalled();
     TestWatchdog_CanRxWithoutTraffic();
     TestWatchdog_OutputTasksWithoutMessages();
+    TestWatchdog_TrafficKeepsSlowTasks();
 
     return vt_end();
 }
