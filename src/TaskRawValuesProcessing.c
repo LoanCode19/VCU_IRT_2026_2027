@@ -30,6 +30,7 @@ void TaskRawValuesProcessing(void *pvParameters)
 {
     TRVPState_t trvpState = {0};
     trvpState.brakePedalPressed = false;
+    AppsMonitor_t appsMonitor = {0}; // S1 : incoherence en cours, faute confirmee (D2)
 
     TRVPParams_t *params = (TRVPParams_t *)pvParameters;
     QueueHandle_t *xTRVPQueue = params->xTRVPQueue;
@@ -88,6 +89,12 @@ void TaskRawValuesProcessing(void *pvParameters)
 
         // MUST give APPS values in the order defined int potmin and potMax in throttle parameters!!!
         float throttleCommand = GetUserThrottleCommand(&trvpState.appsValues[0], &trvpState.appsValues[1], trvpState.speed, trvpState.brakePedalPressed);
+        // Faute APPS confirmee : couple coupe jusqu'a des APPS coherents et la pedale relachee (D2)
+        if (!AppsMonitorStep(&appsMonitor, AppsImplausible(&trvpState.appsValues[0], &trvpState.appsValues[1]),
+                             AppsPedalPercent(&trvpState.appsValues[0]), xTaskGetTickCount()))
+        {
+            throttleCommand = 0.0f;
+        }
         console_print("trvp:Calculated throttle command: %.2f\n", throttleCommand);
 
         dataMessage_t throttleMsg = {

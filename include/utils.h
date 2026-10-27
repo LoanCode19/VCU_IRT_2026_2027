@@ -2,7 +2,19 @@
 #include "FreeRTOS.h"
 #include "structs.h"
 
-float GetUserThrottleCommand(dataMessage_t *pot1val, dataMessage_t *pot2val, int speed, bool brake);
+float GetUserThrottleCommand(const dataMessage_t *pot1val, const dataMessage_t *pot2val, int speed, bool brake);
+bool AppsImplausible(const dataMessage_t *apps1, const dataMessage_t *apps2);
+float AppsPedalPercent(const dataMessage_t *apps1);
+
+// Surveillance des APPS dans TaskRawValuesProcessing (S1, D2)
+typedef struct
+{
+    bool implausible; // incoherence en cours
+    TickType_t since; // debut de l'incoherence
+    bool latched;     // incoherence de plus de APPS_FAULT_CONFIRM_MS : faute confirmee
+} AppsMonitor_t;
+
+bool AppsMonitorStep(AppsMonitor_t *monitor, bool implausibleNow, float pedalPercent, TickType_t now);
 float ProcessThrottle(float finalSpnt, int speed, int motorTemp, int inverterTemp, float voltage);
 void updateDataTimeStatus(dataMessage_t *dataMsg, int count, int maxDiff, TickType_t now);
 void sort4(int32_t v[4], uint8_t n);

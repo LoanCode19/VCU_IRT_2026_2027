@@ -18,9 +18,23 @@ void PrintMainState(const MainState_t *mainState);
 // Consignes perdues parce que la queue de CanTx etait pleine (lisible au debogueur)
 static uint32_t canTxSendFailures = 0;
 
+// S5 (T2) : met a jour l'etat de chaque donnee selon son delai. true si toutes sont fraiches.
+static bool MainInputsValid(MainState_t *state, TickType_t now)
+{
+    updateDataTimeStatus(&state->ThrottleCommand, 1, THROTTLE_CMD_TIMEOUT_MS, now);
+    updateDataTimeStatus(&state->speed, 1, SPEED_TIMEOUT_MS, now);
+    updateDataTimeStatus(&state->motorTemp, 1, TEMP_TIMEOUT_MS, now);
+    updateDataTimeStatus(&state->inverterTemp, 1, TEMP_TIMEOUT_MS, now);
+    updateDataTimeStatus(&state->Voltage, 1, VOLTAGE_TIMEOUT_MS, now);
+    return (state->ThrottleCommand.timeStatus == STATUS_TIME_OK) && (state->speed.timeStatus == STATUS_TIME_OK) &&
+           (state->motorTemp.timeStatus == STATUS_TIME_OK) && (state->inverterTemp.timeStatus == STATUS_TIME_OK) &&
+           (state->Voltage.timeStatus == STATUS_TIME_OK);
+}
+
 void TaskMain(void *pvParameters)
 {
     MainState_t mainState = {0};
+    bool faultLightOn = false; // dernier ordre FaultLight envoye a l'IHM
 
     TickType_t timeNow = xTaskGetTickCount();
 
@@ -69,9 +83,27 @@ void TaskMain(void *pvParameters)
             console_print("Received from queue: id=%d, timestamp=%lu\n", msg.id, (unsigned long)msg.timestamp);
         }
 
+        // S5 (T1, T2) : une donnee absente ou perimee coupe le couple, temperatures comprises (T1). Une
+        // consigne 0 part quand meme (l'onduleur doit recevoir 0, pas un silence), et le voyant defaut
+        // s'allume. La demande passe a 0 dans le calcul : la rampe repartira de 0 au retour des donnees.
+        bool inputsValid = MainInputsValid(&mainState, xTaskGetTickCount());
+        if (inputsValid == faultLightOn)
+        {
+            IHMOrder_t faultOrder = {.order = FaultLight, .state = !inputsValid};
+            if (xQueueSend(*xIHMQueue, &faultOrder, 0) == pdPASS)
+            {
+                faultLightOn = !inputsValid;
+            }
+        }
+
         if (mainState.lastCallTimeStmp - xTaskGetTickCount() > pdMS_TO_TICKS(5))
         {
-            float throttle = ProcessThrottle(FP_TOFLOAT(mainState.ThrottleCommand.data), mainState.speed.data, mainState.motorTemp.data, mainState.inverterTemp.data, mainState.Voltage.data);
+            float request = inputsValid ? FP_TOFLOAT(mainState.ThrottleCommand.data) : 0.0f;
+            float throttle = ProcessThrottle(request, mainState.speed.data, mainState.motorTemp.data, mainState.inverterTemp.data, mainState.Voltage.data);
+            if (!inputsValid)
+            {
+                throttle = 0.0f;
+            }
             dataMessage_t throttleMsg = {
                 .id = inverterTorqueCmdId,    // Throttle command message ID
                 .data = FP_FROMFLT(throttle), // Convert to percentage and scale

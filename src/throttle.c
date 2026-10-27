@@ -10,10 +10,7 @@
 
 int potmin[2];
 int potmax[2];
-float regenRpm;
 float brknompedal;
-float regenmax;
-float regenBrake;
 float brkcruise;
 float throtmax;
 float throtmaxRev;
@@ -35,7 +32,6 @@ float udcmax;
 float idcmin;
 float idcmax;
 int speedLimit;
-float regenendRpm;
 float ThrotRpmFilt;
 
 int speedFiltered;
@@ -49,8 +45,6 @@ float IDCprevspnt = 0;
 
 float throttleRamped = 0.0;
 float SpeedFiltered = 0.0; // limitation des saut de vitesse
-
-static float regenlim = 0;
 
 #define PedalPosArrLen 50
 float PedalPos;
@@ -68,37 +62,39 @@ float throtRampMax;
 float motorTempMax;
 float inverterTempMax;
 
-/**
- * @brief Check the throttle input for sanity and limit the range to min/max values
- *
- * @param potval Pointer to the throttle input array, range should be [potMin, potMax].
- * @param potIdx Index of the throttle input array, range is [0, 1].
- * @return true if the throttle input was within bounds (accounting for POT_SLACK).
- * @return false the throttle was too far out of bounds. Setting potval to the minimum.
- */
-bool CheckAndLimitRange(int32_t *potval, int potIdx)
+// Bornes de la course d'un APPS, dans l'ordre croissant : un capteur peut etre monte a l'envers
+// (potmin > potmax)
+static void AppsBounds(int potIdx, int *low, int *high)
 {
-    // The range check accounts for inverted throttle pedals, where the minimum
-    // value is higher than the maximum. To accomodate for that, the potMin and potMax
-    // variables are set for internal use.
-    int potMin = potmax[potIdx] > potmin[potIdx] ? potmin[potIdx] : potmax[potIdx];
-    int potMax = potmax[potIdx] > potmin[potIdx] ? potmax[potIdx] : potmin[potIdx];
+    *low = (potmax[potIdx] > potmin[potIdx]) ? potmin[potIdx] : potmax[potIdx];
+    *high = (potmax[potIdx] > potmin[potIdx]) ? potmax[potIdx] : potmin[potIdx];
+}
 
-    if (((*potval + POT_SLACK) < potMin) || (*potval > (potMax + POT_SLACK)))
-    {
-        *potval = potMin;
-        return false;
-    }
-    else if (*potval < potMin)
-    {
-        *potval = potMin;
-    }
-    else if (*potval > potMax)
-    {
-        *potval = potMax;
-    }
+// Valeur brute dans la fenetre acceptee : la course, elargie de POT_SLACK de chaque cote.
+// Ne modifie jamais la valeur recue (S4) : un message garde sa valeur d'un cycle a l'autre.
+bool AppsInRange(int32_t raw, int potIdx)
+{
+    int low;
+    int high;
+    AppsBounds(potIdx, &low, &high);
+    return ((raw + POT_SLACK) >= low) && (raw <= (high + POT_SLACK));
+}
 
-    return true;
+// Valeur brute bornee a la course, pour le calcul du pourcentage
+int32_t AppsClamp(int32_t raw, int potIdx)
+{
+    int low;
+    int high;
+    AppsBounds(potIdx, &low, &high);
+    if (raw < low)
+    {
+        return low;
+    }
+    if (raw > high)
+    {
+        return high;
+    }
+    return raw;
 }
 
 /**
@@ -170,22 +166,12 @@ float CalcThrottle(float potnom, int speed, bool brake) /*int potval, int potIdx
 
     ///////////////////////
 
-    if (brake) // if break is pressed, we must finish here and return regen.
+    // Frein appuye : couple 0, quelle que soit la pedale (S2, T 6.1.13). Pas de recuperation (D3) ; si elle
+    // revient un jour, ce sera un couple negatif, et throtmin = 0 devra etre revu (S7). Le filtre de
+    // vitesse ci-dessus a deja ete mis a jour : il continue de suivre.
+    if (brake)
     {
-        if (speed < 100 || speed < regenendRpm)
-        {
-            return 0; // noregen, too slow
-        }
-        else if (speed < regenRpm)
-        {
-            potnom = change(speed, regenendRpm, regenRpm, 0, regenBrake); // taper regen according to speed
-            return potnom;
-        }
-        else
-        { // very fast, max regen
-            potnom = regenBrake;
-            return potnom;
-        }
+        return 0.0f;
     }
 
     // substract offset, bring potval to the potmin-potmax scale and make a percentage
@@ -202,24 +188,6 @@ float CalcThrottle(float potnom, int speed, bool brake) /*int potval, int potIdx
     {
         potnom = (potnom - throtdead) * (100.0f / (100.0f - throtdead));
     }
-
-    if (speed < 100 || speed < regenendRpm) // No regen under 100 rpm or speed under regenendRpm
-    {
-        regenlim = 0;
-    }
-    else if (speed < regenRpm)
-    {
-        regenlim = change(speed, regenendRpm, regenRpm, 0, regenmax); // taper regen according to speed
-    }
-    else
-    {
-        regenlim = regenmax;
-    }
-
-    //!!!potnom is throttle position up to this point//
-
-    // potnom = changeFloat(potnom, 0, 100, regenlim * 10, throtmax * 10); ////most important line for regen calculation, will have a schematics to explain how it works.
-    // potnom *= 0.1;
 
     return potnom;
 }

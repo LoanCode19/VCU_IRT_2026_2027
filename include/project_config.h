@@ -23,4 +23,19 @@
 #define DS_WDG_TIMEOUT pdMS_TO_TICKS(500)
 #define COOLING_WDG_TIMEOUT pdMS_TO_TICKS(500)
 
+// Pedale d'accelerateur (S1) : plus de 10 points d'ecart entre les deux APPS = incoherence (T 11.8.8),
+// confirmee si elle dure plus de 100 ms. Le couple revient ensuite quand les APPS sont coherents et que
+// la pedale est sous 5 % (D2, decide le 27/10/2026, revisable).
+#define APPS_MAX_DIFF_PERCENT 10.0f
+#define APPS_FAULT_CONFIRM_MS 100U
+#define APPS_FAULT_RELEASE_PERCENT 5.0f
+
+// Delai de chaque donnee dans Main (S5, T2, decide le 27/10/2026, revisable ; a reprendre du DBC) :
+// au-dela, la donnee est perimee et le couple coupe. Avec les 200 ms de TRVP pour les APPS, la chaine
+// reste sous les 500 ms de T 11.9.4.
+#define THROTTLE_CMD_TIMEOUT_MS 100
+#define SPEED_TIMEOUT_MS 200
+#define TEMP_TIMEOUT_MS 500
+#define VOLTAGE_TIMEOUT_MS 500
+
 #endif // PROJECT_CONFIG_H
