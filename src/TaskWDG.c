@@ -7,6 +7,7 @@
 
 #include "console.h"
 #include "TaskWDG.h"
+#include "utils.h"
 
 #include "stm32Interface.h"
 
@@ -17,42 +18,20 @@
 
 WDGTimoutTable wdgTimeoutTable;
 
-// Etat d'une tache surveillee. Un champ a part plutot que taskId = -1 : une enumeration
-// peut etre non signee, et -1 n'y existe pas.
-typedef struct
-{
-    bool fed;            // la tache a deja nourri le watchdog
-    TickType_t lastFeed; // heure de son dernier signe de vie
-} WdgTaskState_t;
-
-static bool checkTasksTimeout(const WdgTaskState_t taskStates[MAX_TASKS]);
+static bool checkTasksTimeout(void);
 
 void TaskWDG(void *pvParameters)
 {
-    WdgParams_t *params = (WdgParams_t *)pvParameters;
-    QueueHandle_t *xWDGQueue = params->xWDGQueue;
+    (void)pvParameters; // les signes de vie arrivent par la table wdgLastFeed (utils.c)
 
     TickType_t timeNow = xTaskGetTickCount();
-
-    WdgTaskState_t taskStates[MAX_TASKS] = {0};
 
     while (1)
     {
         vTaskDelayUntil(&timeNow, WDG_PERIOD);
         console_print("------(B)WDG------\n");
 
-        WdgMessage_t wdgMsg = {0, 0};
-
-        // Signes de vie recus depuis la derniere periode
-        while ((xQueueReceive(*xWDGQueue, &wdgMsg, pdMS_TO_TICKS(0))) == pdPASS)
-        {
-            if ((unsigned)wdgMsg.taskId < (unsigned)TASK_COUNT) // en non signe : rejette aussi les valeurs negatives
-            {
-                taskStates[wdgMsg.taskId].fed = true;
-                taskStates[wdgMsg.taskId].lastFeed = wdgMsg.timestamp;
-            }
-        }
-        if (checkTasksTimeout(taskStates))
+        if (checkTasksTimeout())
         {
             refreshIWDG(); // toutes les taches sont a l'heure
         }
@@ -65,18 +44,18 @@ void TaskWDG(void *pvParameters)
     }
 }
 
-static bool checkTasksTimeout(const WdgTaskState_t taskStates[MAX_TASKS])
+static bool checkTasksTimeout(void)
 {
-    TickType_t timeNow = xTaskGetTickCount();
     for (int i = 0; i < MAX_TASKS; i++)
     {
         if (wdgTimeoutTable[i] == 0)
         {
             continue; // tache non enregistree : pas surveillee
         }
-        // Jamais nourri : le delai court depuis le demarrage (t = 0)
-        TickType_t lastFeed = taskStates[i].fed ? taskStates[i].lastFeed : 0;
-        if ((TickType_t)(timeNow - lastFeed) > wdgTimeoutTable[i])
+        // Le signe de vie est lu avant l'heure : une tache plus prioritaire peut en ecrire un entre les
+        // deux, et il ne doit pas paraitre venir du futur. Jamais nourri (0) : le delai court depuis t = 0.
+        TickType_t lastFeed = wdgLastFeed[i];
+        if ((TickType_t)(xTaskGetTickCount() - lastFeed) > wdgTimeoutTable[i])
         {
             return false; // Task i has timed out
         }

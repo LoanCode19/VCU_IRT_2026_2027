@@ -35,8 +35,8 @@ typedef struct
 static void Setup(void)
 {
     BootMainApp(); // appelle aussi initThrottleValues()
-    sTrvpParams = (TRVPParams_t){&xTRVPQueue, &xMainQueue, &xWDGQueue, TaskTRVPId};
-    sMainParams = (MainParams_t){&xMainQueue, &xTRVPQueue, &xIHMQueue, &xCanTxQueue, &xWDGQueue, TaskMainId};
+    sTrvpParams = (TRVPParams_t){&xTRVPQueue, &xMainQueue, TaskTRVPId};
+    sMainParams = (MainParams_t){&xMainQueue, &xTRVPQueue, &xIHMQueue, &xCanTxQueue, TaskMainId};
     SpeedFiltered = 0.0f;
     throttleRamped = 0.0f;
     vTestSetTickAutoIncrement(false);

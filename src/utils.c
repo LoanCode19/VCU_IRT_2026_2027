@@ -258,10 +258,15 @@ void wdgRegister(TaskId taskId, TickType_t timeout, WDGTimoutTable wdgTimeoutTab
     }
 }
 
-void wdgFeed(TaskId taskId, TickType_t timestamp, QueueHandle_t *xWDGQueue)
+// Une case par tache, a la place d'une queue : un signe de vie ne se perd jamais, meme quand les
+// taches rapides tournent a chaque trame CAN, et n'attend jamais (W6, T15). Ecrire un mot de 32 bits
+// aligne est atomique sur le Cortex-M4 : pas besoin de section critique.
+volatile TickType_t wdgLastFeed[MAX_TASKS];
+
+void wdgFeed(TaskId taskId, TickType_t timestamp)
 {
-    WdgMessage_t wdgMsg;
-    wdgMsg.taskId = taskId;
-    wdgMsg.timestamp = timestamp;
-    xQueueSend(*xWDGQueue, &wdgMsg, pdMS_TO_TICKS(5));
+    if ((unsigned)taskId < (unsigned)MAX_TASKS) // en non signe : rejette aussi les valeurs negatives
+    {
+        wdgLastFeed[taskId] = timestamp;
+    }
 }

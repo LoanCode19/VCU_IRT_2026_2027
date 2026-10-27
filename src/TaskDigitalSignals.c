@@ -36,9 +36,7 @@ void TaskDigitalSignals(void *pvParameters)
 {
     DigitalSignalsParams_t *params = (DigitalSignalsParams_t *)pvParameters;
     QueueHandle_t *xDSQueue = params->xDSQueue;
-    QueueHandle_t *xWDGQueue = params->xWDGQueue;
     TaskId taskId = params->taskId;
-    (void)xWDGQueue; /* used only when USE_WDG is defined */
     (void)taskId;
     DigitalOrder_t orderMsg = {0};
 
@@ -56,7 +54,7 @@ void TaskDigitalSignals(void *pvParameters)
         }
 
 #ifdef USE_WDG
-        wdgFeed(taskId, xTaskGetTickCount(), xWDGQueue);
+        wdgFeed(taskId, xTaskGetTickCount());
 #endif
     }
 }

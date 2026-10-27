@@ -55,7 +55,6 @@ void TaskCanTx(void *pvParameters)
 
     CanTxParam_t *params = (CanTxParam_t *)pvParameters;
     QueueHandle_t *xCanTxQueue = params->xCanTxQueue;
-    QueueHandle_t *xWDGQueue = params->xWDGQueue;
     TaskId taskId = params->taskId;
 
     while (1)
@@ -88,7 +87,7 @@ void TaskCanTx(void *pvParameters)
 
 #ifdef USE_WDG
         // feed WDG
-        wdgFeed(taskId, xTaskGetTickCount(), xWDGQueue);
+        wdgFeed(taskId, xTaskGetTickCount());
 #endif
 
         console_print("(E)------CanTX------\n\n");

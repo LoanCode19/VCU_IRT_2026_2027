@@ -21,9 +21,7 @@ void TaskIHM(void *pvParameters)
     TaskIHMParam_t *params = (TaskIHMParam_t *)pvParameters;
     QueueHandle_t *queueIHM = params->xIHMQueue;
     QueueHandle_t *queueDS = params->xDSQueue;
-    QueueHandle_t *xWDGQueue = params->xWDGQueue;
     TaskId taskId = params->taskId;
-    (void)xWDGQueue;  /* used only when USE_WDG is defined */
     (void)taskId;
     IHMOrder_t order;
 
@@ -33,7 +31,7 @@ void TaskIHM(void *pvParameters)
         }
 
 #ifdef USE_WDG
-        wdgFeed(taskId, xTaskGetTickCount(), xWDGQueue);
+        wdgFeed(taskId, xTaskGetTickCount());
 #endif
     }
 }

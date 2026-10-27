@@ -45,7 +45,7 @@ static void Setup(void)
     hcan1.ErrorCode = HAL_CAN_ERROR_NONE;
     memset((void *)&canRxStats, 0, sizeof(canRxStats));
     canTxErrors = 0U;
-    sCanTxParams = (CanTxParam_t){&xCanTxQueue, &xWDGQueue, TaskCanTxId};
+    sCanTxParams = (CanTxParam_t){&xCanTxQueue, TaskCanTxId};
     vTestSetTickAutoIncrement(false);
     vTestSetTickCount(TEST_TICK);
 }
@@ -276,7 +276,7 @@ static void TestCarte_SelfTestFrames(void)
         CanRx_OnFrameFromISR(&frames[i], NULL);
     }
     static CanRxParams_t canRxParams; // static : jamais sur la pile (cf. B5)
-    canRxParams = (CanRxParams_t){&xMainQueue, &xTRVPQueue, &xCanRxQueue, &xWDGQueue, TaskCanRxId, &xCoolingQueue};
+    canRxParams = (CanRxParams_t){&xMainQueue, &xTRVPQueue, &xCanRxQueue, TaskCanRxId, &xCoolingQueue};
     RunTaskOnce(TaskCanRx, &canRxParams);
 
     dataMessage_t trvp[16];

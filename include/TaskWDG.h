@@ -7,14 +7,7 @@
 
 extern WDGTimoutTable wdgTimeoutTable;
 
-void TaskWDG(void *pvParameters);
-
-typedef struct
-{
-    QueueHandle_t *xWDGQueue;
-    TaskId taskId;
-
-} WdgParams_t;
+void TaskWDG(void *pvParameters); // sans parametre : elle lit wdgLastFeed (utils.h)
 
 #endif // TASK_WDG_H
 #endif // USE_WDG

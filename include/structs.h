@@ -52,12 +52,6 @@ typedef enum messageIds
 
 typedef struct
 {
-    TaskId taskId;
-    TickType_t timestamp;
-} WdgMessage_t;
-
-typedef struct
-{
     MessageIds id;
     int32_t data;
     TickType_t timestamp;

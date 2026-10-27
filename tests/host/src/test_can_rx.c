@@ -18,7 +18,7 @@ static CanRxParams_t sCanRxParams; // static : jamais sur la pile (cf. B5)
 static void Setup(TickType_t now)
 {
     BootMainApp();
-    sCanRxParams = (CanRxParams_t){&xMainQueue, &xTRVPQueue, &xCanRxQueue, &xWDGQueue, TaskCanRxId, &xCoolingQueue};
+    sCanRxParams = (CanRxParams_t){&xMainQueue, &xTRVPQueue, &xCanRxQueue, TaskCanRxId, &xCoolingQueue};
     vTestSetTickAutoIncrement(false);
     vTestSetTickCount(now);
 }

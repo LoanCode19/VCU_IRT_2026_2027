@@ -162,7 +162,6 @@ void TaskCanRx(void *pvParameters)
 {
     CanRxParams_t *params = (CanRxParams_t *)pvParameters;
     QueueHandle_t *xCanRxQueue = params->xCanRxQueue;
-    QueueHandle_t *xWDGQueue = params->xWDGQueue;
     TaskId taskId = params->taskId;
 
     TickType_t timeNow = xTaskGetTickCount();
@@ -183,7 +182,7 @@ void TaskCanRx(void *pvParameters)
 
 #ifdef USE_WDG
         // feed WDG
-        wdgFeed(taskId, xTaskGetTickCount(), xWDGQueue);
+        wdgFeed(taskId, xTaskGetTickCount());
 #endif
 
         console_print("------(E)CanRx------\n\n");

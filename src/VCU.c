@@ -50,8 +50,6 @@ void MainApp(void)
     configASSERT(xCanTxQueue != NULL);
     xCanRxQueue = xQueueCreate(32, sizeof(CanFrame_t)); // 8 ms de trames au debit maximal (500 kbit/s)
     configASSERT(xCanRxQueue != NULL);
-    xWDGQueue = xQueueCreate(10, sizeof(WdgMessage_t));
-    configASSERT(xWDGQueue != NULL);
     xDSQueue = xQueueCreate(10, sizeof(DigitalOrder_t));
     configASSERT(xDSQueue != NULL);
     xCoolingQueue = xQueueCreate(10, sizeof(dataMessage_t));
@@ -61,16 +59,13 @@ void MainApp(void)
     // GetUserThrottleCommand();
 
     // static : les taches utilisent ces parametres bien apres la fin de MainApp()
-    static MainParams_t mainTaskParam = {&xMainQueue, &xTRVPQueue, &xIHMQueue, &xCanTxQueue, &xWDGQueue, TaskMainId};
-    static CanRxParams_t canRxParams = {&xMainQueue, &xTRVPQueue, &xCanRxQueue, &xWDGQueue, TaskCanRxId, &xCoolingQueue};
-    static CanTxParam_t canTxParams = {&xCanTxQueue, &xWDGQueue, TaskCanTxId};
-    static TRVPParams_t TRVPParams = {&xTRVPQueue, &xMainQueue, &xWDGQueue, TaskTRVPId};
-    static TaskIHMParam_t ihmParams = {&xIHMQueue, &xDSQueue, &xWDGQueue, TaskIHMId};
-    static DigitalSignalsParams_t digitalSignalsParams = {&xDSQueue, &xWDGQueue, TaskDigitalSignalsId};
-    static CoolingParams_t coolingParams = {&xCoolingQueue, &xWDGQueue, TaskCoolingId};
-#ifdef USE_WDG
-    static WdgParams_t wdgParams = {&xWDGQueue};
-#endif
+    static MainParams_t mainTaskParam = {&xMainQueue, &xTRVPQueue, &xIHMQueue, &xCanTxQueue, TaskMainId};
+    static CanRxParams_t canRxParams = {&xMainQueue, &xTRVPQueue, &xCanRxQueue, TaskCanRxId, &xCoolingQueue};
+    static CanTxParam_t canTxParams = {&xCanTxQueue, TaskCanTxId};
+    static TRVPParams_t TRVPParams = {&xTRVPQueue, &xMainQueue, TaskTRVPId};
+    static TaskIHMParam_t ihmParams = {&xIHMQueue, &xDSQueue, TaskIHMId};
+    static DigitalSignalsParams_t digitalSignalsParams = {&xDSQueue, TaskDigitalSignalsId};
+    static CoolingParams_t coolingParams = {&xCoolingQueue, TaskCoolingId};
 
     // Priorite : plus le nombre est grand, plus la tache est prioritaire. Pile en mots de 4 octets.
     CreateTask(TaskCanRx, "CAN_RX", 256, &canRxParams, 6);
@@ -85,7 +80,7 @@ void MainApp(void)
     CreateTask(CanISREmulator, "CanRxIsr", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY);
 #endif
 #ifdef USE_WDG
-    CreateTask(TaskWDG, "WDG", 256, &wdgParams, 1);
+    CreateTask(TaskWDG, "WDG", 256, NULL, 1);
 
     wdgRegisterTasks();
 

@@ -9,7 +9,6 @@
 typedef struct{
     QueueHandle_t *xIHMQueue;
     QueueHandle_t *xDSQueue;
-    QueueHandle_t *xWDGQueue;
     TaskId taskId;
 } TaskIHMParam_t;
 

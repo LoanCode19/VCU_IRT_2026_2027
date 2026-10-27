@@ -7,7 +7,10 @@ float ProcessThrottle(float finalSpnt, int speed, int motorTemp, int inverterTem
 void updateDataTimeStatus(dataMessage_t *dataMsg, int count, int maxDiff, TickType_t now);
 void sort4(int32_t v[4], uint8_t n);
 int calculateSpeed(dataMessage_t wheelSpeeds[4], int wheelCount);
-void wdgFeed(TaskId taskId, TickType_t timestamp, QueueHandle_t *xWDGQueue);
+// Dernier signe de vie de chaque tache surveillee, ecrit par wdgFeed() et lu par TaskWDG (T15).
+// 0 : la tache n'a encore jamais donne signe de vie.
+extern volatile TickType_t wdgLastFeed[MAX_TASKS];
+void wdgFeed(TaskId taskId, TickType_t timestamp);
 void wdgRegister(TaskId taskId, TickType_t timeout, WDGTimoutTable wdgTimeoutTable);
 //  float checkMessageTimeStamps(const MotorControlState_t *motorState, GlobalState_t *globalState, TickType_t time_now);
 

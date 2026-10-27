@@ -8,7 +8,6 @@
 typedef struct
 {
     QueueHandle_t *xDSQueue;
-    QueueHandle_t *xWDGQueue;
     TaskId taskId;
 } DigitalSignalsParams_t;
 
