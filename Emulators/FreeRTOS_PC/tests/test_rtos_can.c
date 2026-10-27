@@ -8,6 +8,7 @@
 #include "canIds.h"
 #include "queueHandles.h"
 #include "throttle.h"
+#include "TaskCanRX.h"
 #include "vcu_test.h"
 
 // R2 : quand la queue de reception deborde, c'est la valeur la plus recente qui doit survivre
@@ -65,12 +66,42 @@ static void TestCan_TorqueFrame(void)
              value, (unsigned long)elapsed);
 }
 
+// T16 : capteurs et onduleur deux fois plus rapides que prevu (toutes les 5 ms, 12 messages par periode vers
+// TRVP). Les queues de TRVP et de Main, videes toutes les 10 ms, ne doivent rien perdre.
+static void TestCan_FastSensors(void)
+{
+    int32_t apps1 = (int32_t)(potmin[0] + (potmax[0] - potmin[0]) * 0.4f);
+    int32_t apps2 = (int32_t)(potmin[1] + (potmax[1] - potmin[1]) * 0.4f);
+    EmuCan_SetPeriodic(CAN_ID_APPS1, 5U, apps1);
+    EmuCan_SetPeriodic(CAN_ID_APPS2, 5U, apps2);
+    EmuCan_SetPeriodic(CAN_ID_WHEEL_FR, 5U, 0);
+    EmuCan_SetPeriodic(CAN_ID_WHEEL_FL, 5U, 0);
+    EmuCan_SetPeriodic(CAN_ID_WHEEL_RR, 5U, 0);
+    EmuCan_SetPeriodic(CAN_ID_WHEEL_RL, 5U, 0);
+    EmuDti_SetTemperatures(40, 40, 5U);
+    EmuDti_SetVoltage(350, 5U);
+    EmuWaitMs(100); // regime etabli
+
+    uint32_t trvpBefore = canRxStats.lostTrvp;
+    uint32_t mainBefore = canRxStats.lostMain;
+    EmuWaitMs(1000);
+    unsigned long lostTrvp = (unsigned long)(canRxStats.lostTrvp - trvpBefore);
+    unsigned long lostMain = (unsigned long)(canRxStats.lostMain - mainBefore);
+    EmuCan_StopAll();
+
+    vt_check("E-R2b", "T 11.9.2.d", (lostTrvp == 0UL) && (lostMain == 0UL),
+             "capteurs et onduleur toutes les 5 ms (deux fois le debit prevu) pendant 1 s -> %lu message(s) perdu(s) "
+             "vers TRVP, %lu vers Main (attendu 0 et 0 : queues videes toutes les 10 ms)",
+             lostTrvp, lostMain);
+}
+
 int EmuTest_Run(void)
 {
     vt_begin("Emulateur FreeRTOS : bus CAN");
 
     TestCan_Burst();
     TestCan_TorqueFrame();
+    TestCan_FastSensors();
 
     return vt_end();
 }
