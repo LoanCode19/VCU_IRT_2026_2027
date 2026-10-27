@@ -90,6 +90,13 @@ static bool RunMain(float pedalPercent, TickType_t commandTimestamp, float *torq
     return true;
 }
 
+// Un appel de ProcessThrottle() a l'arret, temperatures et tension nominales, elapsedMs apres le precedent
+static float ProcessAtRest(float request, uint32_t elapsedMs)
+{
+    (void)elapsedMs; // la rampe avance encore d'un pas par appel (R1)
+    return ProcessThrottle(request, 0, 40, 40, 350.0f);
+}
+
 // ----------------------------------------------------------------------------------------------
 // T 11.8 : capteurs de position de la pedale d'accelerateur (APPS)
 
@@ -215,7 +222,7 @@ static void Test_EV2_2(void)
     float torque = 0.0f;
     for (int i = 0; i < 100; i++)
     {
-        torque = ProcessThrottle(-50.0f, 0, 40, 40, 350.0f);
+        torque = ProcessAtRest(-50.0f, 10U);
     }
     vt_check("FS-13", "EV 2.2.4", torque >= 0.0f,
              "consigne -50 %% a l'arret -> couple %+.1f %% (attendu >= 0 : roues jamais en arriere, cf. D 2.3.2)", torque);
