@@ -35,6 +35,7 @@ static void CreateTask(TaskFunction_t task, const char *name, uint16_t stackWord
 // (osKernelStart() dans main.c sur la carte).
 void MainApp(void)
 {
+    console_init(); // R7 : mutex des traces, avant que les taches ecrivent
 
     xMainQueue = xQueueCreate(MAIN_QUEUE_LENGTH, sizeof(dataMessage_t));
     configASSERT(xMainQueue != NULL);
