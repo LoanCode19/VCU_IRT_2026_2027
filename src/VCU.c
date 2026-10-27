@@ -106,11 +106,8 @@ void initThrottleValues()
     potmin[1] = 100;      // ADC raw min for pedal sensor 2
     potmax[0] = 3900;     // ADC raw max for pedal sensor 1
     potmax[1] = 3900;     // ADC raw max for pedal sensor 2
-    regenRpm = 1000.0f;   // Start applying regen above this RPM
-    regenendRpm = 200.0f; // Regen fades out below this RPM
+    // Pas de recuperation (D3) : regenRpm, regenendRpm, regenmax et regenBrake ont ete retires
     brknompedal = 0.0f;   // Neutral brake pedal level
-    regenmax = 30.0f;     // Max regen % (negative torque)
-    regenBrake = 50.0f;   // Regen when brake pedal pressed (%)
     brkcruise = 0.0f;     // Brake threshold to
 
     idleSpeed = 800; // Target idle speed in rpm

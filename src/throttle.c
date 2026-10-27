@@ -10,10 +10,7 @@
 
 int potmin[2];
 int potmax[2];
-float regenRpm;
 float brknompedal;
-float regenmax;
-float regenBrake;
 float brkcruise;
 float throtmax;
 float throtmaxRev;
@@ -35,7 +32,6 @@ float udcmax;
 float idcmin;
 float idcmax;
 int speedLimit;
-float regenendRpm;
 float ThrotRpmFilt;
 
 int speedFiltered;
@@ -49,8 +45,6 @@ float IDCprevspnt = 0;
 
 float throttleRamped = 0.0;
 float SpeedFiltered = 0.0; // limitation des saut de vitesse
-
-static float regenlim = 0;
 
 #define PedalPosArrLen 50
 float PedalPos;
@@ -172,22 +166,12 @@ float CalcThrottle(float potnom, int speed, bool brake) /*int potval, int potIdx
 
     ///////////////////////
 
-    if (brake) // if break is pressed, we must finish here and return regen.
+    // Frein appuye : couple 0, quelle que soit la pedale (S2, T 6.1.13). Pas de recuperation (D3) ; si elle
+    // revient un jour, ce sera un couple negatif, et throtmin = 0 devra etre revu (S7). Le filtre de
+    // vitesse ci-dessus a deja ete mis a jour : il continue de suivre.
+    if (brake)
     {
-        if (speed < 100 || speed < regenendRpm)
-        {
-            return 0; // noregen, too slow
-        }
-        else if (speed < regenRpm)
-        {
-            potnom = change(speed, regenendRpm, regenRpm, 0, regenBrake); // taper regen according to speed
-            return potnom;
-        }
-        else
-        { // very fast, max regen
-            potnom = regenBrake;
-            return potnom;
-        }
+        return 0.0f;
     }
 
     // substract offset, bring potval to the potmin-potmax scale and make a percentage
@@ -204,24 +188,6 @@ float CalcThrottle(float potnom, int speed, bool brake) /*int potval, int potIdx
     {
         potnom = (potnom - throtdead) * (100.0f / (100.0f - throtdead));
     }
-
-    if (speed < 100 || speed < regenendRpm) // No regen under 100 rpm or speed under regenendRpm
-    {
-        regenlim = 0;
-    }
-    else if (speed < regenRpm)
-    {
-        regenlim = change(speed, regenendRpm, regenRpm, 0, regenmax); // taper regen according to speed
-    }
-    else
-    {
-        regenlim = regenmax;
-    }
-
-    //!!!potnom is throttle position up to this point//
-
-    // potnom = changeFloat(potnom, 0, 100, regenlim * 10, throtmax * 10); ////most important line for regen calculation, will have a schematics to explain how it works.
-    // potnom *= 0.1;
 
     return potnom;
 }

@@ -61,7 +61,7 @@ static void TestCouple_Brake(void)
     SettleSpeed(150);
     torque = CalcThrottle(0.0f, 150, true);
     vt_check("NR-1", "-", torque == 0.0f,
-             "frein appuye sous regenendRpm (150 < 200) -> couple %+.1f %% (attendu 0)", torque);
+             "frein appuye a faible vitesse (150) -> couple %+.1f %% (attendu 0)", torque);
 }
 
 static void TestCouple_NoReverse(void)
