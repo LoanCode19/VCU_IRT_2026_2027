@@ -41,13 +41,30 @@ void test_refreshIWDG(void)
     }
 }
 
+// Signe de vie d'une tache, donne comme dans les taches du VCU
+static void Feed(TaskId taskId, TickType_t now)
+{
+    wdgFeed(taskId, now, &xWDGQueue);
+}
+
+// La tache a-t-elle donne signe de vie depuis since ? (vide la queue du watchdog)
+static bool FedSince(TaskId taskId, TickType_t since)
+{
+    WdgMessage_t msg;
+    bool fed = false;
+    while (xQueueReceive(xWDGQueue, &msg, 0) == pdPASS)
+    {
+        fed = fed || ((msg.taskId == taskId) && (msg.timestamp >= since));
+    }
+    return fed;
+}
+
 // Appelee a chaque reveil de TaskWDG : TaskCanRx nourrit le watchdog tant que now <= sFeedUntil
 static void FeedCanRx(TickType_t now)
 {
     if (now <= sFeedUntil)
     {
-        WdgMessage_t msg = {.taskId = TaskCanRxId, .timestamp = now};
-        (void)xQueueSend(xWDGQueue, &msg, 0);
+        Feed(TaskCanRxId, now);
     }
 }
 
@@ -104,17 +121,19 @@ static void TestWatchdog_NoRefreshWhenStalled(void)
              sLateRefreshCount, (unsigned long)sLateFrom);
 }
 
+#define TASK_START_TICK 1000U // heure de lancement des taches ci-dessous : 0 voudrait dire « jamais nourri »
+
 static void TestWatchdog_CanRxWithoutTraffic(void)
 {
     Setup();
+    vTestSetTickCount(TASK_START_TICK);
     vTestSetBlockingTimeoutsBeforeEscape(10); // jusqu'a 10 attentes avec timeout
     RunTaskOnce(TaskCanRx, &sCanRxParams);
     vTestSetBlockingTimeoutsBeforeEscape(0);
 
-    unsigned feeds = (unsigned)uxTestQueueCount(xWDGQueue);
-    vt_check("W4a", "-", feeds >= 1U,
-             "bus CAN silencieux -> TaskCanRx nourrit le watchdog %u fois (attendu >= 1, sinon declaree morte)",
-             feeds);
+    bool fed = FedSince(TaskCanRxId, TASK_START_TICK);
+    vt_check("W4a", "-", fed, "bus CAN silencieux -> TaskCanRx donne signe de vie : %s (attendu oui, sinon declaree morte)",
+             fed ? "oui" : "non");
 }
 
 // TaskDigitalSignals sans ordre, TaskCoolingSystem sans temperature : elles doivent quand meme
@@ -124,23 +143,25 @@ static void TestWatchdog_OutputTasksWithoutMessages(void)
     Setup();
     xDSQueue = xQueueCreate(10, sizeof(DigitalOrder_t));
     sDigitalParams = (DigitalSignalsParams_t){&xDSQueue, &xWDGQueue, TaskDigitalSignalsId};
+    vTestSetTickCount(TASK_START_TICK);
     vTestSetBlockingTimeoutsBeforeEscape(10); // jusqu'a 10 attentes avec timeout
     RunTaskOnce(TaskDigitalSignals, &sDigitalParams);
     vTestSetBlockingTimeoutsBeforeEscape(0);
-    unsigned feeds = (unsigned)uxTestQueueCount(xWDGQueue);
-    vt_check("W5a", "-", feeds >= 1U,
-             "aucun ordre de sortie -> TaskDigitalSignals nourrit le watchdog %u fois (attendu >= 1)", feeds);
+    bool fed = FedSince(TaskDigitalSignalsId, TASK_START_TICK);
+    vt_check("W5a", "-", fed, "aucun ordre de sortie -> TaskDigitalSignals donne signe de vie : %s (attendu oui)",
+             fed ? "oui" : "non");
 
     Setup();
     xDSQueue = xQueueCreate(10, sizeof(DigitalOrder_t));
     xCoolingQueue = xQueueCreate(10, sizeof(dataMessage_t));
     sCoolingParams = (CoolingParams_t){&xCoolingQueue, &xWDGQueue, TaskCoolingId};
+    vTestSetTickCount(TASK_START_TICK);
     vTestSetBlockingTimeoutsBeforeEscape(10);
     RunTaskOnce(TaskCoolingSystem, &sCoolingParams);
     vTestSetBlockingTimeoutsBeforeEscape(0);
-    feeds = (unsigned)uxTestQueueCount(xWDGQueue);
-    vt_check("W5b", "-", feeds >= 1U,
-             "aucune temperature -> TaskCoolingSystem nourrit le watchdog %u fois (attendu >= 1)", feeds);
+    fed = FedSince(TaskCoolingId, TASK_START_TICK);
+    vt_check("W5b", "-", fed, "aucune temperature -> TaskCoolingSystem donne signe de vie : %s (attendu oui)",
+             fed ? "oui" : "non");
 }
 
 int main(void)
