@@ -87,6 +87,8 @@ void TaskRawValuesProcessing(void *pvParameters)
             case brakePressedId:
                 trvpState.brake = msg;
                 break;
+            default: // message que la tache n'attend pas : ignore
+                break;
             }
         }
 

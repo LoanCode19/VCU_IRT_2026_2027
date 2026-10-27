@@ -118,6 +118,8 @@ void TaskMain(void *pvParameters)
             case appsFaultId:
                 mainState.appsFault = msg;
                 break;
+            default: // message que la tache n'attend pas : ignore
+                break;
             }
         }
 
