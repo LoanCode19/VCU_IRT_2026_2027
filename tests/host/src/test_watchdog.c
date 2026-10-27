@@ -27,7 +27,6 @@ static unsigned sLateRefreshCount = 0; // rafraichissements a partir de sLateFro
 static TickType_t sLateFrom = 0xFFFFFFFFu;
 static TickType_t sFeedUntil = 0;
 
-static WdgParams_t sWdgParams;
 static CanRxParams_t sCanRxParams;
 static DigitalSignalsParams_t sDigitalParams;
 static CoolingParams_t sCoolingParams;
@@ -44,19 +43,13 @@ void test_refreshIWDG(void)
 // Signe de vie d'une tache, donne comme dans les taches du VCU
 static void Feed(TaskId taskId, TickType_t now)
 {
-    wdgFeed(taskId, now, &xWDGQueue);
+    wdgFeed(taskId, now);
 }
 
-// La tache a-t-elle donne signe de vie depuis since ? (vide la queue du watchdog)
+// La tache a-t-elle donne signe de vie depuis since ?
 static bool FedSince(TaskId taskId, TickType_t since)
 {
-    WdgMessage_t msg;
-    bool fed = false;
-    while (xQueueReceive(xWDGQueue, &msg, 0) == pdPASS)
-    {
-        fed = fed || ((msg.taskId == taskId) && (msg.timestamp >= since));
-    }
-    return fed;
+    return wdgLastFeed[taskId] >= since;
 }
 
 // Appelee a chaque reveil de TaskWDG : TaskCanRx nourrit le watchdog tant que now <= sFeedUntil
@@ -70,15 +63,14 @@ static void FeedCanRx(TickType_t now)
 
 static void Setup(void)
 {
-    xWDGQueue = xQueueCreate(10, sizeof(WdgMessage_t));
+    memset((void *)wdgLastFeed, 0, sizeof(wdgLastFeed));
     xCanRxQueue = xQueueCreate(10, sizeof(CanFrame_t));
     xTRVPQueue = xQueueCreate(10, sizeof(dataMessage_t));
     xMainQueue = xQueueCreate(10, sizeof(dataMessage_t));
     memset(wdgTimeoutTable, 0, sizeof(WDGTimoutTable));
     wdgRegister(TaskCanRxId, CAN_RX_WDG_TIMEOUT, wdgTimeoutTable); // comme wdgRegisterTasks()
 
-    sWdgParams = (WdgParams_t){&xWDGQueue, 0};
-    sCanRxParams = (CanRxParams_t){&xMainQueue, &xTRVPQueue, &xCanRxQueue, &xWDGQueue, TaskCanRxId};
+    sCanRxParams = (CanRxParams_t){&xMainQueue, &xTRVPQueue, &xCanRxQueue, TaskCanRxId};
     sRefreshCount = 0;
     sLateRefreshCount = 0;
     sLateFrom = 0xFFFFFFFFu;
@@ -98,7 +90,7 @@ static void TestWatchdog_RefreshWhenHealthy(void)
     Setup();
     sFeedUntil = 0xFFFFFFFFu;
     vTestSetDelayCallsBeforeEscape(5, FeedCanRx); // 5 periodes de TaskWDG
-    RunTaskOnce(TaskWDG, &sWdgParams);
+    RunTaskOnce(TaskWDG, NULL);
     vTestSetDelayCallsBeforeEscape(0, NULL);
 
     vt_check("W1a", "-", sRefreshCount == 5,
@@ -113,7 +105,7 @@ static void TestWatchdog_NoRefreshWhenStalled(void)
     // Dernier signe de vie a 2000 ms : en retard apres son timeout, constate a la periode suivante
     sLateFrom = sFeedUntil + CAN_RX_WDG_TIMEOUT + WDG_PERIOD_MS;
     vTestSetDelayCallsBeforeEscape(6000U / WDG_PERIOD_MS, FeedCanRx); // jusqu'a t = 6 s
-    RunTaskOnce(TaskWDG, &sWdgParams);
+    RunTaskOnce(TaskWDG, NULL);
     vTestSetDelayCallsBeforeEscape(0, NULL);
 
     vt_check("W1b", "-", sLateRefreshCount == 0,
@@ -142,7 +134,7 @@ static void TestWatchdog_OutputTasksWithoutMessages(void)
 {
     Setup();
     xDSQueue = xQueueCreate(10, sizeof(DigitalOrder_t));
-    sDigitalParams = (DigitalSignalsParams_t){&xDSQueue, &xWDGQueue, TaskDigitalSignalsId};
+    sDigitalParams = (DigitalSignalsParams_t){&xDSQueue, TaskDigitalSignalsId};
     vTestSetTickCount(TASK_START_TICK);
     vTestSetBlockingTimeoutsBeforeEscape(10); // jusqu'a 10 attentes avec timeout
     RunTaskOnce(TaskDigitalSignals, &sDigitalParams);
@@ -154,7 +146,7 @@ static void TestWatchdog_OutputTasksWithoutMessages(void)
     Setup();
     xDSQueue = xQueueCreate(10, sizeof(DigitalOrder_t));
     xCoolingQueue = xQueueCreate(10, sizeof(dataMessage_t));
-    sCoolingParams = (CoolingParams_t){&xCoolingQueue, &xWDGQueue, TaskCoolingId};
+    sCoolingParams = (CoolingParams_t){&xCoolingQueue, TaskCoolingId};
     vTestSetTickCount(TASK_START_TICK);
     vTestSetBlockingTimeoutsBeforeEscape(10);
     RunTaskOnce(TaskCoolingSystem, &sCoolingParams);
@@ -190,7 +182,7 @@ static void TestWatchdog_TrafficKeepsSlowTasks(void)
     wdgRegisterTasks();     // les 7 taches, avec leurs delais, comme MainApp()
     vTestSetTickCount(2000U); // une tache qui n'a jamais donne signe de vie est deja en retard
     vTestSetDelayCallsBeforeEscape(3, FeedWithTraffic); // 3 periodes de TaskWDG
-    RunTaskOnce(TaskWDG, &sWdgParams);
+    RunTaskOnce(TaskWDG, NULL);
     vTestSetDelayCallsBeforeEscape(0, NULL);
 
     vt_check("W6a", "-", sRefreshCount == 3,

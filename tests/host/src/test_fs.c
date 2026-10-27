@@ -39,9 +39,9 @@ static TaskIHMParam_t sIhmParams;
 static void Setup(void)
 {
     BootMainApp(); // queues comme sur la carte + initThrottleValues()
-    sMainParams = (MainParams_t){&xMainQueue, &xTRVPQueue, &xIHMQueue, &xCanTxQueue, &xWDGQueue, TaskMainId};
-    sTrvpParams = (TRVPParams_t){&xTRVPQueue, &xMainQueue, &xWDGQueue, TaskTRVPId};
-    sIhmParams = (TaskIHMParam_t){&xIHMQueue, &xDSQueue, &xWDGQueue, TaskIHMId};
+    sMainParams = (MainParams_t){&xMainQueue, &xTRVPQueue, &xIHMQueue, &xCanTxQueue, TaskMainId};
+    sTrvpParams = (TRVPParams_t){&xTRVPQueue, &xMainQueue, TaskTRVPId};
+    sIhmParams = (TaskIHMParam_t){&xIHMQueue, &xDSQueue, TaskIHMId};
     SpeedFiltered = 0.0f;
     throttleRamped = 0.0f;
     vTestSetTickAutoIncrement(false);
@@ -271,7 +271,7 @@ static void Test_IN9(void)
 {
     Setup();
     QueueHandle_t coolingQueue = xQueueCreate(8U, sizeof(dataMessage_t));
-    CoolingParams_t coolingParams = {&coolingQueue, NULL, TaskCoolingId};
+    CoolingParams_t coolingParams = {&coolingQueue, TaskCoolingId};
     Push(coolingQueue, motor_tempId, 20, T_NOW);
     Push(coolingQueue, inverter_tempId, 20, T_NOW);
     RunTaskOnce(TaskCoolingSystem, &coolingParams);

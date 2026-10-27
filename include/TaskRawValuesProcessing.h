@@ -23,7 +23,6 @@ typedef struct
 {
     QueueHandle_t *xTRVPQueue;
     QueueHandle_t *xMainQueue;
-    QueueHandle_t *xWDGQueue;
     TaskId taskId;
 
 } TRVPParams_t;

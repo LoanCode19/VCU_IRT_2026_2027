@@ -34,7 +34,6 @@ void TaskRawValuesProcessing(void *pvParameters)
     TRVPParams_t *params = (TRVPParams_t *)pvParameters;
     QueueHandle_t *xTRVPQueue = params->xTRVPQueue;
     QueueHandle_t *xMainQueue = params->xMainQueue;
-    QueueHandle_t *xWDGQueue = params->xWDGQueue;
     TaskId taskId = params->taskId;
 
     trvpState.wheelSpeeds[WHEELFR_IDX].timeStatus = STATUS_NOT_READY;
@@ -110,7 +109,7 @@ void TaskRawValuesProcessing(void *pvParameters)
 
 #ifdef USE_WDG
         // feed WDG
-        wdgFeed(taskId, xTaskGetTickCount(), xWDGQueue);
+        wdgFeed(taskId, xTaskGetTickCount());
 #endif
 
         console_print("------(E)TRVP------\n\n");

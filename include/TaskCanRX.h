@@ -55,7 +55,6 @@ typedef struct
     QueueHandle_t *xMainQueue;
     QueueHandle_t *xTRVPQueue;
     QueueHandle_t *xCanRxQueue;
-    QueueHandle_t *xWDGQueue;
     TaskId taskId;
     QueueHandle_t *xCoolingQueue; // en dernier : une initialisation sans ce champ le laisse a NULL
 

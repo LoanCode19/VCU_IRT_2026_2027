@@ -16,7 +16,7 @@ static TaskIHMParam_t sIhmParams;
 static bool Forward(Order_t order, bool state, DigitalOrder_t *out)
 {
     BootMainApp();
-    sIhmParams = (TaskIHMParam_t){&xIHMQueue, &xDSQueue, &xWDGQueue, TaskIHMId};
+    sIhmParams = (TaskIHMParam_t){&xIHMQueue, &xDSQueue, TaskIHMId};
     IHMOrder_t in = {.order = order, .state = state};
     (void)xQueueSend(xIHMQueue, &in, 0);
     RunTaskOnce(TaskIHM, &sIhmParams);

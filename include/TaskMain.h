@@ -9,7 +9,6 @@ typedef struct
     QueueHandle_t *xTRVPQueue;
     QueueHandle_t *xIHMQueue;
     QueueHandle_t *xCanTxQueue;
-    QueueHandle_t *xWDGQueue;
     TaskId taskId;
 } MainParams_t;
 

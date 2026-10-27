@@ -8,7 +8,6 @@ QueueHandle_t xTRVPQueue;
 QueueHandle_t xIHMQueue;
 QueueHandle_t xCanTxQueue;
 QueueHandle_t xCanRxQueue;
-QueueHandle_t xWDGQueue;
 
 QueueHandle_t xDSQueue;
 QueueHandle_t xCoolingQueue;

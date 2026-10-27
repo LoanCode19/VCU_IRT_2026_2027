@@ -33,7 +33,7 @@ static void TestIntegration_Queues(void)
 {
     BootMainApp();
     bool allQueues = (xMainQueue != NULL) && (xTRVPQueue != NULL) && (xIHMQueue != NULL) &&
-                     (xCanTxQueue != NULL) && (xCanRxQueue != NULL) && (xWDGQueue != NULL) && (xDSQueue != NULL);
+                     (xCanTxQueue != NULL) && (xCanRxQueue != NULL) && (xDSQueue != NULL) && (xCoolingQueue != NULL);
     vt_check("NR-1", "-", allQueues, "MainApp() cree les 7 queues");
 }
 

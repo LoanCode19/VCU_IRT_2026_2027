@@ -23,7 +23,7 @@ static void Setup(void)
 {
     BootMainApp();
     vTestCanReset();
-    sCanTxParams = (CanTxParam_t){&xCanTxQueue, &xWDGQueue, TaskCanTxId};
+    sCanTxParams = (CanTxParam_t){&xCanTxQueue, TaskCanTxId};
     vTestSetTickAutoIncrement(false);
     vTestSetTickCount(100U);
 }

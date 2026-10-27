@@ -8,7 +8,6 @@
 typedef struct
 {
     QueueHandle_t *xCoolingQueue;
-    QueueHandle_t *xWDGQueue;
     TaskId taskId;
 } CoolingParams_t;
 

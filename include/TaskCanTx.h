@@ -19,7 +19,6 @@ extern volatile uint32_t canTxErrors; // consignes qui n'ont pas pu partir (boit
 typedef struct
 {
     QueueHandle_t *xCanTxQueue;
-    QueueHandle_t *xWDGQueue;
 
     TaskId taskId;
 
