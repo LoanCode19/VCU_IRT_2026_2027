@@ -119,11 +119,21 @@ void TaskRawValuesProcessing(void *pvParameters)
             .data = (int32_t)trvpState.speed, // mm/s (D7)
             .timestamp = xTaskGetTickCount()};
 
+        // Faute APPS confirmee (S1, D2) : Main allume le voyant defaut
+        dataMessage_t appsFaultMsg = {
+            .id = appsFaultId,
+            .data = appsMonitor.latched ? 1 : 0,
+            .timestamp = xTaskGetTickCount()};
+
         if (xQueueSend(*xMainQueue, &throttleMsg, 0) != pdPASS)
         {
             trvpSendFailures++;
         }
         if (xQueueSend(*xMainQueue, &speedMsg, 0) != pdPASS)
+        {
+            trvpSendFailures++;
+        }
+        if (xQueueSend(*xMainQueue, &appsFaultMsg, 0) != pdPASS)
         {
             trvpSendFailures++;
         }

@@ -27,6 +27,8 @@ typedef struct
     dataMessage_t brake;
     dataMessage_t r2dSwitch;
 
+    dataMessage_t appsFault; // faute APPS confirmee, envoyee par TRVP (S1, D2)
+
     TickType_t lastCallTimeStmp;
 
     bool direction; // true for forward, false for reverse

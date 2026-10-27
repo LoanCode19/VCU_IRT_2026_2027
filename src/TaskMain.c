@@ -115,6 +115,9 @@ void TaskMain(void *pvParameters)
             case r2dSwitchId:
                 mainState.r2dSwitch = msg;
                 break;
+            case appsFaultId:
+                mainState.appsFault = msg;
+                break;
             }
         }
 
@@ -126,10 +129,11 @@ void TaskMain(void *pvParameters)
 
         // S5 (T1, T2) : une donnee absente ou perimee coupe le couple, temperatures comprises (T1). Une
         // consigne 0 part quand meme (l'onduleur doit recevoir 0, pas un silence), et le voyant defaut
-        // s'allume, comme pour une trame d'etat du vehicule perdue (T19). Hors R2D ou donnee perimee, la
-        // demande passe a 0 dans le calcul : la rampe repartira de 0.
+        // s'allume, comme pour une trame d'etat du vehicule perdue (T19) ou une faute APPS confirmee (S1). Hors
+        // R2D ou donnee perimee, la demande passe a 0 dans le calcul : la rampe repartira de 0.
         bool inputsValid = MainInputsValid(&mainState, now);
-        bool fault = !inputsValid || !vehicle.fresh;
+        bool appsFault = (mainState.appsFault.timeStatus == STATUS_TIME_OK) && (mainState.appsFault.data != 0);
+        bool fault = !inputsValid || !vehicle.fresh || appsFault;
         if (fault != faultLightOn)
         {
             IHMOrder_t faultOrder = {.order = FaultLight, .state = fault};
