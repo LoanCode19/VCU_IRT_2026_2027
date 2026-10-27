@@ -21,8 +21,13 @@ typedef struct
     dataMessage_t inverterTemp;
     dataMessage_t Voltage;
 
-    bool brakePedalPressed; // true if brake pedal is pressed, false otherwise
-    TickType_t lastCheckedBreakPedal;
+    // Etat du vehicule, trame provisoire 0x012 (T19)
+    dataMessage_t tsActive;
+    dataMessage_t sdcClosed;
+    dataMessage_t brake;
+    dataMessage_t r2dSwitch;
+
+    dataMessage_t appsFault; // faute APPS confirmee, envoyee par TRVP (S1, D2)
 
     TickType_t lastCallTimeStmp;
 

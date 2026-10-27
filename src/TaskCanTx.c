@@ -39,7 +39,8 @@ CanFrame_t Dti_EncodeRelativeCurrent(float percent)
     return frame;
 }
 
-// Commande 0x0C "Drive enable" : 1 = conduite autorisee, 0 = interdite. Envoyee par la machine R2D (lot 6).
+// Commande 0x0C "Drive enable" : 1 = conduite autorisee, 0 = interdite. Main l'envoie a chaque periode, 1 en R2D
+// (T20).
 CanFrame_t Dti_EncodeDriveEnable(bool enable)
 {
     CanFrame_t frame = {.id = CAN_ID_DTI_DRIVE_ENABLE, .ide = 0U, .dlc = 1U};
@@ -80,6 +81,17 @@ void TaskCanTx(void *pvParameters)
                 }
                 break;
             }
+            case driveEnableCmdId:
+            {
+                CanFrame_t frame = Dti_EncodeDriveEnable(msg.data != 0);
+                if (!CanTx_Send(&frame))
+                {
+                    canTxErrors++;
+                }
+                break;
+            }
+            default: // message que la tache n'attend pas : ignore
+                break;
             }
         }
 

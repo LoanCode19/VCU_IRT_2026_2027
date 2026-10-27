@@ -11,6 +11,7 @@ typedef struct
 
     dataMessage_t wheelSpeeds[4];
     dataMessage_t appsValues[2];
+    dataMessage_t brake; // frein, trame d'etat du vehicule (T19)
 
     bool brakePedalPressed; // true if brake pedal is pressed, false otherwise
     TickType_t lastCheckedBreakPedal;

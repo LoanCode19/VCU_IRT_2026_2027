@@ -34,7 +34,6 @@ static uint32_t trvpSendFailures = 0;
 void TaskRawValuesProcessing(void *pvParameters)
 {
     TRVPState_t trvpState = {0};
-    trvpState.brakePedalPressed = false;
     AppsMonitor_t appsMonitor = {0}; // S1 : incoherence en cours, faute confirmee (D2)
 
     TRVPParams_t *params = (TRVPParams_t *)pvParameters;
@@ -49,6 +48,7 @@ void TaskRawValuesProcessing(void *pvParameters)
     trvpState.wheelSpeeds[WHEELRL_IDX].timeStatus = STATUS_NOT_READY;
     trvpState.appsValues[0].timeStatus = STATUS_NOT_READY;
     trvpState.appsValues[1].timeStatus = STATUS_NOT_READY;
+    trvpState.brake.timeStatus = STATUS_NOT_READY;
 
     // R1 (T3) : une passe toutes les CONTROL_PERIOD_MS, quel que soit le trafic CAN
     TickType_t lastWake = xTaskGetTickCount();
@@ -84,11 +84,21 @@ void TaskRawValuesProcessing(void *pvParameters)
             case apps2Id: // calculated throttle command
                 trvpState.appsValues[1] = msg;
                 break;
+            case brakePressedId:
+                trvpState.brake = msg;
+                break;
+            default: // message que la tache n'attend pas : ignore
+                break;
             }
         }
 
         updateDataTimeStatus(trvpState.wheelSpeeds, WHEEL_COUNT, MAX_WHEEL_TIMEOUT, xTaskGetTickCount()); // if you need the actual time, call the function directly here!!!
         updateDataTimeStatus(trvpState.appsValues, APPS_COUNT, MAX_APPS_TIMEOUT, xTaskGetTickCount());
+
+        // Frein (S2) : il agit sur le couple, c'est un signal critique (T 11.9.1). Jamais recu, perime ou d'une
+        // valeur autre que 0 : il compte comme appuye, et le couple est coupe.
+        updateDataTimeStatus(&trvpState.brake, 1, VEHICLE_STATE_TIMEOUT_MS, xTaskGetTickCount());
+        trvpState.brakePedalPressed = (trvpState.brake.timeStatus != STATUS_TIME_OK) || (trvpState.brake.data != 0);
 
         trvpState.speed = calculateSpeed(trvpState.wheelSpeeds, WHEEL_COUNT);
 
@@ -111,11 +121,21 @@ void TaskRawValuesProcessing(void *pvParameters)
             .data = (int32_t)trvpState.speed, // mm/s (D7)
             .timestamp = xTaskGetTickCount()};
 
+        // Faute APPS confirmee (S1, D2) : Main allume le voyant defaut
+        dataMessage_t appsFaultMsg = {
+            .id = appsFaultId,
+            .data = appsMonitor.latched ? 1 : 0,
+            .timestamp = xTaskGetTickCount()};
+
         if (xQueueSend(*xMainQueue, &throttleMsg, 0) != pdPASS)
         {
             trvpSendFailures++;
         }
         if (xQueueSend(*xMainQueue, &speedMsg, 0) != pdPASS)
+        {
+            trvpSendFailures++;
+        }
+        if (xQueueSend(*xMainQueue, &appsFaultMsg, 0) != pdPASS)
         {
             trvpSendFailures++;
         }
