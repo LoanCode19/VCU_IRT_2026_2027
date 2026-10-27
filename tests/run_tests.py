@@ -24,6 +24,9 @@ TESTS = ROOT / "tests"
 HOST = TESTS / "host"
 COMMON = TESTS / "common"
 BUILD = TESTS / "build"
+BOARD_MAIN = ROOT / "VCU_STM32F407" / "Core" / "Src" / "main.c"
+BOARD_SELFTEST = ROOT / "VCU_STM32F407" / "Core" / "Src" / "selftest.c"
+BOARD_INC = ROOT / "VCU_STM32F407" / "Core" / "Inc"
 
 sys.path.insert(0, str(COMMON))
 from vcu_build import exe_name, prepare_app_sources, run  # noqa: E402
@@ -35,6 +38,7 @@ SECTORS = {
     "vitesse": ("test_vitesse.c", [], "Vitesse vehicule"),
     "can_rx": ("test_can_rx.c", [], "Reception CAN (TaskCanRx)"),
     "can_tx": ("test_can_tx.c", [], "Emission CAN (TaskCanTx)"),
+    "carte": ("test_carte.c", ["SELFTEST_HOST"], "Code CAN de la carte (fausse HAL)"),
     "chaine": ("test_chaine.c", [], "Chaine TRVP -> Main -> CanTx"),
     "demarrage": ("test_integration.c", [], "Demarrage (MainApp)"),
     "watchdog": ("test_watchdog.c", ["USE_WDG", "refreshIWDG=test_refreshIWDG"], "Watchdog"),
@@ -55,6 +59,21 @@ def include_flags():
     return [f"-I{HOST / 'include'}", f"-I{COMMON}", f"-I{INCLUDE}"]
 
 
+def extract_board_user_code(out_dir):
+    """Copie la zone USER CODE 4 de main.c (code CAN de la carte) pour test_carte.c, ou None."""
+    text = BOARD_MAIN.read_text(encoding="utf-8")
+    begin, end = "/* USER CODE BEGIN 4 */", "/* USER CODE END 4 */"
+    if begin not in text or end not in text:
+        return None
+    before, rest = text.split(begin, 1)
+    line = before.count("\n") + 1
+    # #line : les erreurs de compilation pointent vers main.c
+    code = f'#line {line} "{BOARD_MAIN.as_posix()}"\n{begin}{rest.split(end, 1)[0]}{end}\n'
+    path = out_dir / "main_user_code_4.c"
+    path.write_text(code, encoding="utf-8")
+    return path
+
+
 def build_sector(cc, name, app_dir, includes):
     test_file, defines, _ = SECTORS[name]
     out_dir = BUILD / name
@@ -67,9 +86,18 @@ def build_sector(cc, name, app_dir, includes):
         units += [(app_dir / s, []) for s in LEGACY_COOLING_SOURCES]
     else:
         units = [(HOST / "src" / "freertos_stubs.c", ["-DTEST_LINK_REAL_UTILS"]),
-                 (HOST / "src" / "console_stub.c", []),
-                 (HOST / "src" / "can_stub.c", []),
-                 (HOST / "src" / test_file, ["-Wall", "-Wno-unused-function"])]
+                 (HOST / "src" / "console_stub.c", [])]
+        test_flags = ["-Wall", "-Wno-unused-function"]
+        if name == "carte":
+            # Le code de la carte fournit CanTx_Send() : une fausse HAL remplace le faux CanTx_Send()
+            if extract_board_user_code(out_dir) is None:
+                return None, f"zone USER CODE 4 introuvable dans {BOARD_MAIN.name}"
+            units.append((HOST / "src" / "hal_stub.c", []))
+            units.append((BOARD_SELFTEST, [f"-I{BOARD_INC}"])) # trames de l'autotest, sans la partie HAL
+            test_flags += [f"-I{out_dir}", f"-I{BOARD_INC}"]
+        else:
+            units.append((HOST / "src" / "can_stub.c", []))
+        units.append((HOST / "src" / test_file, test_flags))
         units += [(src, ["-w"]) for src in sorted(app_dir.glob("*.c"))]
 
     objects = []

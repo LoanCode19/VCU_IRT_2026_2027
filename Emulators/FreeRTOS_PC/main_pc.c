@@ -58,17 +58,37 @@ void vAssertCalled(const char *file, unsigned long line)
     EmuExit(3);
 }
 
-// Rafraichissement de l'IWDG de la carte (stm32Interface.h), appele par TaskWDG avec -D USE_WDG
+// Rafraichissement de l'IWDG de la carte (stm32Interface.h), appele par TaskWDG (USE_WDG).
+// Modele : sur la carte, l'IWDG compte depuis MX_IWDG_Init(), avant le scheduler. On retient l'heure
+// du dernier rafraichissement et le plus long ecart, que les tests comparent au delai de l'IWDG (emu.h).
 static volatile uint32_t sIwdgRefreshCount = 0;
+static volatile uint32_t sIwdgLastRefreshMs = 0;
+static volatile uint32_t sIwdgMaxGapMs = 0;
 
 void refreshIWDG(void)
 {
+    uint32_t now = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
+    if ((now - sIwdgLastRefreshMs) > sIwdgMaxGapMs)
+    {
+        sIwdgMaxGapMs = now - sIwdgLastRefreshMs;
+    }
+    sIwdgLastRefreshMs = now;
     sIwdgRefreshCount++;
 }
 
 uint32_t EmuIwdg_RefreshCount(void)
 {
     return sIwdgRefreshCount;
+}
+
+uint32_t EmuIwdg_LastRefreshMs(void)
+{
+    return sIwdgLastRefreshMs;
+}
+
+uint32_t EmuIwdg_MaxGapMs(void)
+{
+    return sIwdgMaxGapMs;
 }
 
 void vApplicationMallocFailedHook(void)

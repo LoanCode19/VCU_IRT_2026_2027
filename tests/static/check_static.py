@@ -240,6 +240,14 @@ def check_board():
           "notification FIFO1 activee : aucun filtre n'y envoie de trame et aucun callback ne la traite")
     check("C4a", "-", "CAN_MODE_LOOPBACK" not in main_c and "TaskSendTXMessages" not in main_c,
           "main.c : CAN en mode LOOPBACK et/ou tache de test TaskSendTXMessages encore presents")
+    # C4b (P10) : l'autotest de la carte nue reste desactive dans le depot
+    selftest_h = BOARD / "Core" / "Inc" / "selftest.h"
+    m = re.search(r"#define\s+VCU_SELFTEST\s+(\d+)", read(selftest_h)) if selftest_h.exists() else None
+    selftest_mode = m.group(1) if m else "absent"
+    in_cproject = [name for name in ("Debug", "Release") if "VCU_SELFTEST" in configs.get(name, "")]
+    check("C4b", "-", selftest_mode == "0" and not in_cproject,
+          f"autotest de la carte nue : VCU_SELFTEST {selftest_mode} dans selftest.h"
+          + (", defini dans .cproject (" + ", ".join(in_cproject) + ")" if in_cproject else "") + " (attendu 0)")
 
     # C5 : le code genere de main.c doit correspondre au .ioc, sinon la prochaine generation CubeMX
     # ecrase sans prevenir les reglages faits a la main. Cle absente du .ioc : valeur par defaut de CubeMX.

@@ -9,6 +9,7 @@ typedef void *TaskHandle_t;
 #define tskIDLE_PRIORITY ((UBaseType_t)0U)
 
 TickType_t xTaskGetTickCount(void);
+TickType_t xTaskGetTickCountFromISR(void);
 void vTaskDelete(void *taskToDelete);
 void vTestSetTickCount(TickType_t tickCount);
 

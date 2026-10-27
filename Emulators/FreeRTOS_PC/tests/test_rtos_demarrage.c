@@ -44,5 +44,13 @@ int EmuTest_Run(void)
     vt_check("RT-4", "-", (temps >= 3U) && (temps <= 5U),
              "capteur de temperature a 10 Hz pendant 350 ms -> %u message(s) vers Main (attendu 4)", temps);
 
+    // Marge du tas (essai carte du lot 1b, emule : decision P10), avec le meme tas que la carte. Sur la
+    // carte, l'autotest (mode 1) donne la valeur reelle : chaque tache y porte en plus sa structure newlib.
+    size_t minFree = xPortGetMinimumEverFreeHeapSize();
+    vt_check("E-R4b", "-", minFree >= (configTOTAL_HEAP_SIZE / 4U),
+             "tas FreeRTOS : %u octets utilises au plus sur %u, %u libres au minimum (attendu au moins 25 %%, %u)",
+             (unsigned)(configTOTAL_HEAP_SIZE - minFree), (unsigned)configTOTAL_HEAP_SIZE, (unsigned)minFree,
+             (unsigned)(configTOTAL_HEAP_SIZE / 4U));
+
     return vt_end();
 }

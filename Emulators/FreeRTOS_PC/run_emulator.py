@@ -5,7 +5,7 @@ Usage (depuis la racine du depot) :
     python Emulators/FreeRTOS_PC/run_emulator.py               # tous les tests de tests/
     python Emulators/FreeRTOS_PC/run_emulator.py demarrage     # tests/test_rtos_demarrage.c
     python Emulators/FreeRTOS_PC/run_emulator.py -v            # affiche aussi les traces du VCU
-    python Emulators/FreeRTOS_PC/run_emulator.py -D USE_WDG    # ajoute un define (ex. watchdog)
+    python Emulators/FreeRTOS_PC/run_emulator.py -D NOM        # ajoute un define (USE_WDG y est deja)
 
 Noyau : les sources FreeRTOS V10.3.1 du projet carte (VCU_STM32F407/Middlewares/...), identiques a
 la version officielle, avec le port Windows officiel de la meme version (port/MSVC-MingW).
@@ -33,6 +33,9 @@ KERNEL_SOURCES = [KERNEL / name for name in
                   ("tasks.c", "queue.c", "list.c", "timers.c", "event_groups.c", "stream_buffer.c")]
 KERNEL_SOURCES += [KERNEL / "portable" / "MemMang" / "heap_4.c", PORT / "port.c"]
 EMU_SOURCES = [EMU / "main_pc.c", EMU / "emu_can.c", EMU / "emu_trace.c", EMU / "console_pc.c"]
+
+# Defines de la carte (VCU_STM32F407/.cproject, Debug et Release) : le VCU est compile comme sur le STM32
+BOARD_DEFINES = ["USE_WDG"]
 
 RESULT_RE = re.compile(r"^\[(PASS|FAIL|BLOQUE)\s*\]|^ {9}\S")
 
@@ -74,7 +77,8 @@ def main():
     parser = argparse.ArgumentParser(description="Emulateur FreeRTOS du VCU")
     parser.add_argument("tests", nargs="*", help="noms des tests (test_rtos_<nom>.c), defaut : tous")
     parser.add_argument("--cc", default=os.environ.get("CC", "gcc"))
-    parser.add_argument("-D", dest="defines", action="append", default=[], help="define supplementaire")
+    parser.add_argument("-D", dest="defines", action="append", default=[],
+                        help="define supplementaire (ceux de la carte, comme USE_WDG, y sont deja)")
     parser.add_argument("-v", "--verbose", action="store_true", help="affiche les traces console_print du VCU")
     parser.add_argument("--timeout", type=int, default=60, help="duree max d'un test en secondes")
     args = parser.parse_args()
@@ -98,7 +102,7 @@ def main():
     failed_runs = 0
     for name in selected:
         try:
-            exe = build(args.cc, available[name], args.defines)
+            exe = build(args.cc, available[name], [*BOARD_DEFINES, *args.defines])
         except RuntimeError as err:
             print(f"\n=== {name} ===\n[FAIL  ] build  -            {err}")
             failed_runs += 1
