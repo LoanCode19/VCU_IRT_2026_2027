@@ -301,14 +301,16 @@ static void Test_EV4_11(void)
 // ----------------------------------------------------------------------------------------------
 // IN 9.2.1 : ventilateurs allumes pendant le test de pluie (voiture froide, TS actif, pas en R2D : IN 9.2.2, 9.2.4)
 
-static void Test_IN9(void)
+// Le refroidissement, voiture froide (20 degC), recoit "TS actif" a la valeur tsActive, date de tsTimestamp.
+// Renvoie le dernier ordre des ventilateurs.
+static bool CoolingFansWhenCold(int32_t tsActive, TickType_t tsTimestamp)
 {
     Setup();
     QueueHandle_t coolingQueue = xQueueCreate(8U, sizeof(dataMessage_t));
     CoolingParams_t coolingParams = {&coolingQueue, TaskCoolingId};
     Push(coolingQueue, motor_tempId, 20, T_NOW);
     Push(coolingQueue, inverter_tempId, 20, T_NOW);
-    Push(coolingQueue, tsActiveId, 1, T_NOW);
+    Push(coolingQueue, tsActiveId, tsActive, tsTimestamp);
     RunTaskOnce(TaskCoolingSystem, &coolingParams);
 
     bool fansOn = false;
@@ -320,9 +322,21 @@ static void Test_IN9(void)
             fansOn = output.state;
         }
     }
+    return fansOn;
+}
+
+static void Test_IN9(void)
+{
+    bool fansOn = CoolingFansWhenCold(1, T_NOW);
     vt_check("FS-18", "IN 9.2.1", fansOn,
              "TS actif, voiture froide (20 degC) -> ventilateurs %s (attendu ON pour le test de pluie)",
              fansOn ? "ON" : "OFF, aucune commande pour les forcer");
+
+    // S12a (T9) : signal TS perdu -> ventilateurs ON, comme une temperature perdue
+    bool fansOnLost = CoolingFansWhenCold(0, T_NOW - 200U);
+    vt_check("S12a", "IN 9.2.1", fansOnLost,
+             "signal TS perdu (dernier message vieux de 200 ms), voiture froide -> ventilateurs %s (attendu ON, T9)",
+             fansOnLost ? "ON" : "OFF");
 }
 
 int main(void)
