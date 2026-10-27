@@ -23,10 +23,6 @@
 #include "TaskDigitalSignals.h"
 #include "TaskCoolingSystem.h"
 
-#ifdef TEST_ISR
-#include "CanISREmulator.h"
-#endif
-
 // Cree une tache, et bloque si la creation echoue (tas FreeRTOS trop petit)
 static void CreateTask(TaskFunction_t task, const char *name, uint16_t stackWords,
                        void *params, UBaseType_t priority)
@@ -76,9 +72,6 @@ void MainApp(void)
     CreateTask(TaskCoolingSystem, "COOLING", 256, &coolingParams, 2);
     CreateTask(TaskIHM, "IHM", 256, &ihmParams, 2);
 
-#ifdef TEST_ISR
-    CreateTask(CanISREmulator, "CanRxIsr", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY);
-#endif
 #ifdef USE_WDG
     CreateTask(TaskWDG, "WDG", 256, NULL, 1);
 

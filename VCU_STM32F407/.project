@@ -36,11 +36,6 @@
 			<locationURI>virtual:/virtual</locationURI>
 		</link>
 		<link>
-			<name>VCU_APP/Emulators</name>
-			<type>2</type>
-			<locationURI>PARENT-1-PROJECT_LOC/Emulators</locationURI>
-		</link>
-		<link>
 			<name>VCU_APP/include</name>
 			<type>2</type>
 			<locationURI>PARENT-1-PROJECT_LOC/include</locationURI>

@@ -136,7 +136,7 @@ def check_arm(arm_gcc):
         f"-I{BOARD / 'Drivers' / 'CMSIS' / 'Device' / 'ST' / 'STM32F4xx' / 'Include'}",
         f"-I{BOARD / 'Drivers' / 'CMSIS' / 'Include'}",
         f"-I{rtos / 'include'}", f"-I{rtos / 'CMSIS_RTOS'}", f"-I{rtos / 'portable' / 'GCC' / 'ARM_CM4F'}",
-        f"-I{ROOT / 'Emulators'}", f"-I{INCLUDE}",
+        f"-I{INCLUDE}",
     ]
 
     # Q2 vu par la carte : int32_t y est un long, uint32_t un unsigned long
