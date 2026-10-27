@@ -29,10 +29,10 @@ static void SettleSpeed(int speed)
 // Un appel de ProcessThrottle(), elapsedMs apres le precedent
 static float Process(float request, float speed, int motorTemp, int inverterTemp, float udc, uint32_t elapsedMs)
 {
-    return ProcessThrottle(request, (int)speed, motorTemp, inverterTemp, udc, elapsedMs);
+    return ProcessThrottle(request, speed, motorTemp, inverterTemp, udc, elapsedMs);
 }
 
-// Appels repetes, toutes les 10 ms, pour sortir de la rampe et du filtre de SpeedLimitCommand.
+// Appels repetes, toutes les 10 ms, pour sortir de la rampe.
 static float SettledProcess(float request, int speed, int motorTemp, int inverterTemp, float udc)
 {
     float out = 0.0f;
@@ -95,21 +95,17 @@ static void TestCouple_ElectricalLimits(void)
                "limite 80 kW / 500 A : ProcessThrottle() ne recoit pas le courant Idc, test a ecrire avec la future limitation");
 }
 
-// Vitesse limite, dans l'unite de SpeedLimitCommand()
+// Vitesse limite, dans l'unite de SpeedLimitCommand() : m/s (D7)
 static float SpeedLimitValue(void)
 {
-    return (float)speedLimit;
+    return speedLimitMs;
 }
 
-// Consigne de 100 % apres le limiteur, a vitesse constante (appels repetes : filtre IIR)
+// Consigne de 100 % apres le limiteur, a la vitesse speed
 static float LimitAt(float speed)
 {
     float torque = 100.0f;
-    for (int i = 0; i < 100; i++)
-    {
-        torque = 100.0f;
-        SpeedLimitCommand(&torque, (int)speed);
-    }
+    SpeedLimitCommand(&torque, speed);
     return torque;
 }
 
@@ -126,10 +122,14 @@ static void TestCouple_SpeedLimiter(void)
              "limiteur, vitesse %.1f = moitie de la limite -> %.1f %% (attendu 100)", limit / 2.0f, torque);
 
     torque = LimitAt(limit);
-    // IIRFILTER entier : (n + 15*l) >> 4 tronque, la vitesse filtree reste jusqu'a 15 sous la vraie
-    vt_check("B3c", "-", torque <= 0.0f,
-             "limiteur, vitesse = limite (%.1f) -> %.1f %% (attendu 0 ; le filtre IIR entier reste sous la vitesse reelle)",
-             limit, torque);
+    vt_check("B3c", "-", torque <= 0.0f, "limiteur, vitesse = limite (%.1f) -> %.1f %% (attendu 0)", limit, torque);
+
+    // T12 : reduction lineaire sur les speedLimitMarginMs derniers m/s
+    float middle = limit - speedLimitMarginMs / 2.0f;
+    torque = LimitAt(middle);
+    vt_check("B3d", "-", (torque > 49.5f) && (torque < 50.5f),
+             "limiteur, vitesse %.2f m/s (milieu des %.1f derniers m/s) -> %.1f %% (attendu 50 : reduction lineaire)",
+             middle, speedLimitMarginMs, torque);
 }
 
 static void TestCouple_Ramp(void)
@@ -185,7 +185,6 @@ int main(void)
     TestCouple_ElectricalLimits();
     TestCouple_Ramp();
     TestCouple_TemperatureDerate();
-    // En dernier : SpeedLimitCommand garde un filtre static impossible a remettre a zero
     TestCouple_SpeedLimiter();
 
     return vt_end();

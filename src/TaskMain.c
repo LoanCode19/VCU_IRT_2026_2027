@@ -102,8 +102,9 @@ void TaskMain(void *pvParameters)
         float request = inputsValid ? FP_TOFLOAT(mainState.ThrottleCommand.data) : 0.0f;
         uint32_t elapsedMs = (uint32_t)((now - lastPass) * portTICK_PERIOD_MS);
         lastPass = now;
-        float throttle = ProcessThrottle(request, mainState.speed.data, mainState.motorTemp.data,
-                                         mainState.inverterTemp.data, mainState.Voltage.data, elapsedMs);
+        float speedMs = (float)mainState.speed.data / 1000.0f; // mm/s dans les messages, m/s dans le calcul (D7)
+        float throttle = ProcessThrottle(request, speedMs, mainState.motorTemp.data, mainState.inverterTemp.data,
+                                         mainState.Voltage.data, elapsedMs);
         if (!inputsValid)
         {
             throttle = 0.0f;

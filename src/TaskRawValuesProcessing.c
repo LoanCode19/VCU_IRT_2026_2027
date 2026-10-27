@@ -59,6 +59,10 @@ void TaskRawValuesProcessing(void *pvParameters)
         while ((xQueueReceive(*xTRVPQueue, &msg, pdMS_TO_TICKS(0))) == pdPASS)
         {
             msg.timeStatus = STATUS_TIME_OK;
+            if ((msg.id >= wheelFRId) && (msg.id <= wheelRLId))
+            {
+                msg.data = WheelRawToMmS(msg.data); // D7 : vitesse de roue en mm/s des la reception
+            }
 
             switch (msg.id)
             {
@@ -104,7 +108,7 @@ void TaskRawValuesProcessing(void *pvParameters)
 
         dataMessage_t speedMsg = {
             .id = calculatedSpeedId,
-            .data = trvpState.speed, // convert to percentage and send as int
+            .data = (int32_t)trvpState.speed, // mm/s (D7)
             .timestamp = xTaskGetTickCount()};
 
         if (xQueueSend(*xMainQueue, &throttleMsg, 0) != pdPASS)
@@ -139,7 +143,7 @@ void printTRVPState(const TRVPState_t *state, float pedalCmd)
     console_print("TRVP State:\n");
     console_print("  Pedal command: %ld (0.1 %%)\n", (long)(pedalCmd * 10.0f));
     console_print("  Brake Pedal Pressed: %s\n", state->brakePedalPressed ? "Yes" : "No");
-    console_print("  Speed: %lu\n", (unsigned long)state->speed);
+    console_print("  Speed: %lu mm/s\n", (unsigned long)state->speed);
     for (int i = 0; i < WHEEL_COUNT; i++)
     {
         console_print("  Wheel %d Speed: %ld, Time Status: %d\n", i, (long)state->wheelSpeeds[i].data, state->wheelSpeeds[i].timeStatus);

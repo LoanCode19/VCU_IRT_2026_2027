@@ -13,7 +13,9 @@
 #define MAX_WHEEL_TIMEOUT 400
 #define MAX_BREAK_TIMEOUT 150
 
-#define MAX_DIFF_WHEELS 30
+#if !WHEEL_SENSOR_RAW_IS_RPM
+#error "D7 : WheelRawToMmS() ne sait convertir que des tr/min de roue"
+#endif
 
 // Incoherence des APPS (S1, T 11.8.8, T 11.8.9, T 11.9.2) : un capteur absent ou en retard, hors plage,
 // ou plus de APPS_MAX_DIFF_PERCENT points d'ecart entre les deux
@@ -78,17 +80,17 @@ bool AppsMonitorStep(AppsMonitor_t *monitor, bool implausibleNow, float pedalPer
     return !monitor->latched;
 }
 
-float ProcessThrottle(float finalSpnt, int speed, int motorTemp, int inverterTemp, float voltage, uint32_t elapsedMs)
+float ProcessThrottle(float finalSpnt, float speedMs, int motorTemp, int inverterTemp, float voltage, uint32_t elapsedMs)
 {
     // we claculate messageTimouts here to minimize the probability of a context switch that would make the time_now
     // not reliable. If Max timouts are big enough, that should not pose any problem.
     // float limitMsgTimeouts = checkMessageTimeStamps(motorState, globalState, time_now);
 
-    float rampPerS = (speed < throtRampRpm) ? throtRampPerS : throtRampMaxPerS; // pente de la montee, en %/s
+    float rampPerS = (speedMs < throtRampSpeedMs) ? throtRampPerS : throtRampMaxPerS; // pente de la montee, en %/s
 
     // Throttle::UdcLimitCommand(finalSpnt,Variable             s::GetFloat(Variables::udc));
     // Throttle::IdcLimitCommand(finalSpnt, ABS(Variables::GetFloat(Variables::idc)));
-    SpeedLimitCommand(&finalSpnt, ABS(speed));
+    SpeedLimitCommand(&finalSpnt, ABS(speedMs));
 
     if (TemperatureDerate(motorTemp, motorTempMax, &finalSpnt))
     {
@@ -112,6 +114,15 @@ float ProcessThrottle(float finalSpnt, int speed, int motorTemp, int inverterTem
     return finalSpnt;
 }
 
+// D7 : seule conversion d'une vitesse de roue brute (tr/min de roue, hypothese provisoire) en mm/s.
+// v = tr/min x 2 pi x r / 60, arrondie au mm/s le plus proche.
+int32_t WheelRawToMmS(int32_t raw)
+{
+    float mmPerS = (float)raw * 2.0f * 3.14159265f * WHEEL_RADIUS_M * 1000.0f / 60.0f;
+    return (int32_t)((mmPerS >= 0.0f) ? (mmPerS + 0.5f) : (mmPerS - 0.5f));
+}
+
+// Vitesse du vehicule a partir des roues valides, en mm/s (D7)
 int calculateSpeed(dataMessage_t wheelSpeeds[4], int wheelCount)
 {
 
@@ -143,15 +154,15 @@ int calculateSpeed(dataMessage_t wheelSpeeds[4], int wheelCount)
         int d12 = ABS(selectedValues[1] - selectedValues[2]);
         int d02 = ABS(selectedValues[0] - selectedValues[2]);
 
-        if (d01 < MAX_DIFF_WHEELS && d12 < MAX_DIFF_WHEELS)
+        if (d01 < WHEEL_MAX_DIFF_MMS && d12 < WHEEL_MAX_DIFF_MMS)
         {
             speed = (selectedValues[0] + selectedValues[1] + selectedValues[2]) / 3;
         }
-        else if (d01 < MAX_DIFF_WHEELS)
+        else if (d01 < WHEEL_MAX_DIFF_MMS)
         {
             speed = (selectedValues[0] + selectedValues[1]) >> 1;
         }
-        else if (d12 < MAX_DIFF_WHEELS)
+        else if (d12 < WHEEL_MAX_DIFF_MMS)
         {
             speed = (selectedValues[1] + selectedValues[2]) >> 1;
         }
@@ -163,7 +174,7 @@ int calculateSpeed(dataMessage_t wheelSpeeds[4], int wheelCount)
         break;
     }
     case 2:
-        if (ABS(selectedValues[0] - selectedValues[1]) > MAX_DIFF_WHEELS) // If the two values are too different, we consider them unreliable
+        if (ABS(selectedValues[0] - selectedValues[1]) > WHEEL_MAX_DIFF_MMS) // If the two values are too different, we consider them unreliable
         {
             speed = 0;
         }

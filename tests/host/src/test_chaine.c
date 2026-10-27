@@ -31,6 +31,7 @@ typedef struct
     bool sendTemperatures;
     TickType_t temperatureTimestamp;
     TickType_t voltageTimestamp;
+    int32_t wheelRaw; // valeur brute des 4 capteurs de roue
 } ChainInputs_t;
 
 static void Setup(void)
@@ -58,10 +59,10 @@ static bool RunChain(ChainInputs_t in, float *torque)
     int32_t raw1 = (int32_t)(potmin[1] + (potmax[1] - potmin[1]) * in.appsPercent / 100.0f);
     Push(xTRVPQueue, apps1Id, raw0, T_NOW);
     Push(xTRVPQueue, apps2Id, raw1, T_NOW);
-    Push(xTRVPQueue, wheelFRId, 0, T_NOW);
-    Push(xTRVPQueue, wheelFLId, 0, T_NOW);
-    Push(xTRVPQueue, wheelRRId, 0, T_NOW);
-    Push(xTRVPQueue, wheelRLId, 0, T_NOW);
+    Push(xTRVPQueue, wheelFRId, in.wheelRaw, T_NOW);
+    Push(xTRVPQueue, wheelFLId, in.wheelRaw, T_NOW);
+    Push(xTRVPQueue, wheelRRId, in.wheelRaw, T_NOW);
+    Push(xTRVPQueue, wheelRLId, in.wheelRaw, T_NOW);
     if (in.sendTemperatures)
     {
         Push(xMainQueue, motor_tempId, 40, in.temperatureTimestamp);
@@ -79,6 +80,12 @@ static bool RunChain(ChainInputs_t in, float *torque)
     }
     *torque = FP_TOFLOAT(cmd.data);
     return true;
+}
+
+// Valeur brute d'un capteur de roue pour une vitesse en m/s, avec l'hypothese de D7 (tr/min de roue)
+static int32_t WheelRawFor(float speedMs)
+{
+    return (int32_t)(speedMs * 60.0f / (2.0f * 3.14159265f * WHEEL_RADIUS_M) + 0.5f);
 }
 
 // R1 : TaskMain pendant 100 ms sans aucun message. Renvoie le plus long ecart entre deux consignes, du debut
@@ -148,6 +155,7 @@ int main(void)
         vt_blocked("S5d", "-", "chaine sans couple (B2a) : voyant defaut non verifiable");
         vt_blocked("S5e", "T 11.9.4", "chaine sans couple (B2a) : coupure sur temperature perimee non verifiable");
         vt_blocked("S3a", "EV 4.11.7", "chaine sans couple (B2a) : absence de R2D non verifiable");
+        vt_blocked("B3f", "-", "chaine sans couple (B2a) : limiteur de vitesse non verifiable");
         return vt_end();
     }
 
@@ -171,6 +179,16 @@ int main(void)
              "aucun ordre)",
              (missingLight == 1) ? "allume" : ((missingLight == 0) ? "eteint" : "sans ordre"),
              (freshLight == 1) ? "allume" : ((freshLight == 0) ? "eteint" : "aucun ordre"));
+
+    // B3, D7 : toute la chaine des unites (roues brutes, TRVP en mm/s, Main en m/s, limiteur)
+    float half = 0.0f;
+    float over = 0.0f;
+    bool sentHalf = RunChain((ChainInputs_t){40.0f, true, T_NOW, T_NOW, WheelRawFor(speedLimitMs / 2.0f)}, &half);
+    bool sentOver = RunChain((ChainInputs_t){40.0f, true, T_NOW, T_NOW, WheelRawFor(speedLimitMs + 1.0f)}, &over);
+    vt_check("B3f", "-", sentHalf && (half > 0.0f) && (!sentOver || over <= 0.0f),
+             "APPS 40 %%, roues a la moitie de la limite (%.1f m/s) -> consigne %.1f %% ; a la limite + 1 m/s -> "
+             "%.1f %% (attendu > 0, puis 0)",
+             speedLimitMs / 2.0f, half, over);
 
     sent = RunChain((ChainInputs_t){40.0f, true, T_NOW, T_NOW}, &torque);
     vt_check("S3a", "EV 4.11.7", !sent || torque <= 0.0f,

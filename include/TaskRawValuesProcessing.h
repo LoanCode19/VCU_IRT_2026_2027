@@ -7,7 +7,7 @@ void updateWheelsDataTimeStatus(dataMessage_t wheelSpeeds[4], TickType_t timeNow
 typedef struct
 {
     // int32_t ThrottleCommand; // calculated throttle command to be sent to the inverter
-    uint32_t speed; // calculated speed
+    uint32_t speed; // vitesse du vehicule, en mm/s (D7)
 
     dataMessage_t wheelSpeeds[4];
     dataMessage_t appsValues[2];

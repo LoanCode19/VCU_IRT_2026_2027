@@ -15,7 +15,7 @@ typedef struct
 typedef struct
 {
     dataMessage_t ThrottleCommand; // calculated throttle command to be sent to the inverter
-    dataMessage_t speed;           // calculated speed
+    dataMessage_t speed;           // vitesse du vehicule, en mm/s (D7)
 
     dataMessage_t motorTemp;
     dataMessage_t inverterTemp;

@@ -15,7 +15,7 @@ float CalcIdleSpeed(int speed);
 float CalcCruiseSpeed(int speed);
 void UdcLimitCommand(float *finalSpnt, float udc);
 void IdcLimitCommand(float *finalSpnt, float idc);
-void SpeedLimitCommand(float *finalSpnt, int speed);
+void SpeedLimitCommand(float *finalSpnt, float speedMs);
 extern int potmin[2];
 extern int potmax[2];
 extern float brknompedal;
@@ -37,13 +37,13 @@ extern float udcmin;
 extern float udcmax;
 extern float idcmin;
 extern float idcmax;
-extern int speedLimit;
+extern float speedLimitMs;
+extern float speedLimitMarginMs;
 extern float ThrotRpmFilt;
-extern int speedFiltered;
 extern float potnomFiltered;
 extern float brkRamped;
 
-extern int throtRampRpm;
+extern float throtRampSpeedMs;
 extern float throtRampPerS;
 extern float throtRampMaxPerS;
 

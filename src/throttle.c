@@ -29,10 +29,10 @@ float udcmin;
 float udcmax;
 float idcmin;
 float idcmax;
-int speedLimit;
+float speedLimitMs;
+float speedLimitMarginMs;
 float ThrotRpmFilt;
 
-int speedFiltered;
 float potnomFiltered;
 float brkRamped;
 
@@ -53,7 +53,7 @@ float PedalPosArr[PedalPosArrLen];
 uint8_t PedalPosIdx = 0;
 int8_t PedalReq = 0; // positive is accel negative is decell
 
-int throtRampRpm;
+float throtRampSpeedMs;
 float throtRampPerS;
 float throtRampMaxPerS;
 
@@ -191,32 +191,27 @@ float CalcThrottle(float potnom, int speed, bool brake) /*int potval, int potIdx
 }
 
 /**
- * @brief limits the throttle command if speed is too high
+ * @brief Limiteur de vitesse (B3), en m/s (D7, T12) : aucune limite sous speedLimitMs - speedLimitMarginMs,
+ * puis une reduction lineaire jusqu'a 0 a speedLimitMs. Sans filtre : la vitesse est deja la mediane des roues.
  *
- *
- * Prerequisit: potval in range.
-
- *
- * TODO: No regen implemented. Commanding 0 throttle while braking, otherwise direct output.
- *
- * @param finalSpnt calculated throttle between -100.0 ans 100.0
- * @param speed the current speed of the vehicule (taken from MotorState)
- * @return float, value of throttle command between -100.0 and 100.0
+ * @param finalSpnt consigne en %, reduite sur place si elle est positive
+ * @param speedMs vitesse du vehicule, en m/s
  */
-
-void SpeedLimitCommand(float *finalSpnt, int speed)
+void SpeedLimitCommand(float *finalSpnt, float speedMs)
 {
-    static int speedFiltered = 0;
-
-    speedFiltered = IIRFILTER(speedFiltered, speed, 4);
-
-    if (*finalSpnt > 0) // Only limit if driver is asking for positive torque (acceleration)
+    if (*finalSpnt <= 0.0f) // seule une demande de couple positif est limitee
     {
-        int speederr = speedLimit - speedFiltered; // How far below the speed limit we are
-        int res = speederr / 4;                    // Scale the error down
-
-        res = MAX(0, res);                 // Never allow negative (no throttle if over speed limit)
-        *finalSpnt = MIN(res, *finalSpnt); // Clamp driver’s request down to res if necessary
+        return;
+    }
+    if (speedMs >= speedLimitMs)
+    {
+        *finalSpnt = 0.0f;
+        return;
+    }
+    if (speedMs > speedLimitMs - speedLimitMarginMs)
+    {
+        float maxAllowed = 100.0f * (speedLimitMs - speedMs) / speedLimitMarginMs;
+        *finalSpnt = MIN(*finalSpnt, maxAllowed);
     }
 }
 
