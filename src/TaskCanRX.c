@@ -32,6 +32,11 @@ const CanRxSignal_t canRxTable[] = {
     {CAN_ID_DTI_TEMPERATURES, 0U, 2U, true, 10, inverter_tempId, CAN_TO_MAIN_AND_COOLING},
     {CAN_ID_DTI_TEMPERATURES, 2U, 2U, true, 10, motor_tempId, CAN_TO_MAIN_AND_COOLING},
     {CAN_ID_DTI_ERPM_VOLTAGE, 6U, 2U, true, 1, voltageId, CAN_TO_MAIN},
+    // Etat du vehicule, trame provisoire en attendant D5 (T19) : un octet par signal, 0 ou 1
+    {CAN_ID_VEHICLE_STATE, 0U, 1U, false, 1, tsActiveId, CAN_TO_MAIN_AND_COOLING},
+    {CAN_ID_VEHICLE_STATE, 1U, 1U, false, 1, sdcClosedId, CAN_TO_MAIN},
+    {CAN_ID_VEHICLE_STATE, 2U, 1U, false, 1, brakePressedId, CAN_TO_TRVP_AND_MAIN},
+    {CAN_ID_VEHICLE_STATE, 3U, 1U, false, 1, r2dSwitchId, CAN_TO_MAIN},
 };
 const unsigned canRxTableSize = sizeof(canRxTable) / sizeof(canRxTable[0]);
 
@@ -90,10 +95,13 @@ static bool DecodeSignal(const CanFrame_t *frame, const CanRxSignal_t *signal, i
 
 static void RouteMessage(const CanRxParams_t *params, CanRoute_t route, const dataMessage_t *msg)
 {
-    if (route == CAN_TO_TRVP)
+    if ((route == CAN_TO_TRVP) || (route == CAN_TO_TRVP_AND_MAIN))
     {
         SendLatest(*params->xTRVPQueue, msg, &canRxStats.lostTrvp);
-        return;
+        if (route == CAN_TO_TRVP)
+        {
+            return;
+        }
     }
     SendLatest(*params->xMainQueue, msg, &canRxStats.lostMain);
     if (route == CAN_TO_MAIN_AND_COOLING)

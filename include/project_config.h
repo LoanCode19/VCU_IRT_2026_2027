@@ -47,6 +47,11 @@
 #define TEMP_TIMEOUT_MS 500
 #define VOLTAGE_TIMEOUT_MS 500
 
+// Etat du vehicule (trame provisoire 0x012 toutes les 10 ms, T19, decide le 27/10/2026, revisable) : au-dela de ce
+// delai, la trame est perdue. Sortie du R2D, voyant defaut, et le frein compte comme appuye (T 11.9.4 : 500 ms au
+// plus).
+#define VEHICLE_STATE_TIMEOUT_MS 100
+
 // Vitesse des roues (D7, decide le 23/10/2026) : m/s dans les calculs, mm/s dans les entiers. Valeurs
 // PROVISOIRES, a remplacer par les mesures sur la voiture ; seule WheelRawToMmS() les utilise.
 #define WHEEL_SPEED_PROVISIONAL 1 // a retirer quand les deux valeurs ci-dessous sont mesurees (test D7a)
