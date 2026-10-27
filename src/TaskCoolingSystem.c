@@ -171,7 +171,6 @@ void TaskCoolingSystem(void *pvParameters)
 	CoolingParams_t *params = (CoolingParams_t *)pvParameters;
 	QueueHandle_t *xTCSQueue = params->xCoolingQueue;
 	TaskId taskId = params->taskId;
-	(void)taskId;
 	dataMessage_t incomingMsg = {0};
 	CoolingState_t state = {0};
 
@@ -181,11 +180,6 @@ void TaskCoolingSystem(void *pvParameters)
 	state.inverterTemp.timeStatus = STATUS_NOT_READY;
 	state.tsActive.id = tsActiveId;
 	state.tsActive.timeStatus = STATUS_NOT_READY;
-
-	if ((xTCSQueue == NULL) || (*xTCSQueue == NULL))
-	{
-		// vTaskDelete(NULL);
-	}
 
 	for (;;)
 	{
@@ -230,8 +224,6 @@ void TaskCoolingSystem(void *pvParameters)
 				sFansEnabled);
 		}
 
-#ifdef USE_WDG
-		wdgFeed(taskId, xTaskGetTickCount());
-#endif
+		wdgFeedNow(taskId);
 	}
 }

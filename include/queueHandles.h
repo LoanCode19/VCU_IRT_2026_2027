@@ -1,7 +1,9 @@
-#include "queue.h"
-
 #ifndef QUEUE_HANDLES_H
 #define QUEUE_HANDLES_H
+
+#include "FreeRTOS.h"
+#include "queue.h"
+
 extern QueueHandle_t xMainQueue;
 extern QueueHandle_t xTRVPQueue;
 extern QueueHandle_t xIHMQueue;

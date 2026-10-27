@@ -53,7 +53,6 @@ void MainApp(void)
     configASSERT(xCoolingQueue != NULL);
 
     initThrottleValues();
-    // GetUserThrottleCommand();
 
     // static : les taches utilisent ces parametres bien apres la fin de MainApp()
     static MainParams_t mainTaskParam = {&xMainQueue, &xTRVPQueue, &xIHMQueue, &xCanTxQueue, TaskMainId};
@@ -100,32 +99,20 @@ void initThrottleValues()
     potmin[1] = 100;      // ADC raw min for pedal sensor 2
     potmax[0] = 3900;     // ADC raw max for pedal sensor 1
     potmax[1] = 3900;     // ADC raw max for pedal sensor 2
-    // Pas de recuperation (D3) : regenRpm, regenendRpm, regenmax et regenBrake ont ete retires
-    brknompedal = 0.0f;   // Neutral brake pedal level
-    brkcruise = 0.0f;     // Brake threshold to
-
-    idleSpeed = 800; // Target idle speed in rpm
-    cruiseSpeed = 0; // Default cruise setpoint (none)
-    speedkp = 0.2f;  // PID proportional gain for cruise
-    speedflt = 50;   // Filter time constant
-
-    idleThrotLim = 5.0f; // Throttle limit during idle hold (%)
-    throtmax = 100.0f;   // Max throttle %
-    throtmaxRev = 40.0f; // Max throttle in reverse %
-    throtmin = 0.0f;     // Min throttle limit (%)
-    throtdead = 2.0f;    // Deadband around 0% p
+    // Pas de recuperation (D3) : ni couple negatif, ni reglage de recuperation
+    throtmax = 100.0f; // consigne maximale, en %
+    throtmin = 0.0f;   // consigne minimale, en %
+    throtdead = 2.0f;  // zone morte en bas de course de la pedale, en %
 
     // Rampes de montee en %/s (R1) : les 3 et 5 %/10 ms d'avant. Pas de rampe de recuperation (D3).
     throtRampPerS = 300.0f;    // %/s sous throtRampSpeedMs
     throtRampMaxPerS = 500.0f; // %/s au-dessus
     throtRampSpeedMs = 41.9f;  // m/s (T18, decide le 27/10/2026, revisable : les 2000 tr/min d'avant avec D7)
 
-    udcmin = 250.0f;  // Min DC bus voltage (V) : provisoire, batterie inconnue (T11)
-    udcmax = 410.0f;  // Max DC bus voltage (V)
+    udcmin = 250.0f; // Min DC bus voltage (V) : provisoire, batterie inconnue (T11)
     // Tension basse (S8, T11, decide le 27/10/2026, revisable) : 100 % de couple a udcmin + 20 V, 0 a udcmin
     udcDerateMarginV = 20.0f;
-    idcmin = -400.0f; // Min DC current (regen limit, A)
-    idcmax = 400.0f;  // Max DC current (drive limit, A)
+    // Courant et puissance (S8) : lot 6c, apres D4
 
     // Limiteur de vitesse (B3, T12, revisable) : 160 km/h, reduction lineaire sur les 3 derniers m/s
     speedLimitMs = 160.0f / 3.6f;

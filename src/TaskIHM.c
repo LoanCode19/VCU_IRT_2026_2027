@@ -22,7 +22,6 @@ void TaskIHM(void *pvParameters)
     QueueHandle_t *queueIHM = params->xIHMQueue;
     QueueHandle_t *queueDS = params->xDSQueue;
     TaskId taskId = params->taskId;
-    (void)taskId;
     IHMOrder_t order;
 
     for(;;){
@@ -30,8 +29,6 @@ void TaskIHM(void *pvParameters)
             sendDSOrder(queueDS, order.order, order.state);
         }
 
-#ifdef USE_WDG
-        wdgFeed(taskId, xTaskGetTickCount());
-#endif
+        wdgFeedNow(taskId);
     }
 }

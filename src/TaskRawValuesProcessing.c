@@ -12,7 +12,6 @@
 
 #include "utils.h"
 #include "my_fp.h"
-#include "project_config.h"
 
 #define WHEELFR_IDX 0
 #define WHEELFL_IDX 1
@@ -149,10 +148,7 @@ void TaskRawValuesProcessing(void *pvParameters)
             printTRVPState(&trvpState, throttleCommand);
         }
 
-#ifdef USE_WDG
-        // feed WDG
-        wdgFeed(taskId, xTaskGetTickCount());
-#endif
+        wdgFeedNow(taskId);
 
         vTaskDelayUntil(&lastWake, pdMS_TO_TICKS(CONTROL_PERIOD_MS));
     }

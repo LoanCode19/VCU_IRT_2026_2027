@@ -37,13 +37,7 @@ void TaskDigitalSignals(void *pvParameters)
     DigitalSignalsParams_t *params = (DigitalSignalsParams_t *)pvParameters;
     QueueHandle_t *xDSQueue = params->xDSQueue;
     TaskId taskId = params->taskId;
-    (void)taskId;
     DigitalOrder_t orderMsg = {0};
-
-    if ((xDSQueue == NULL) || (*xDSQueue == NULL))
-    {
-        // vTaskDelete(NULL);
-    }
 
     for (;;)
     {
@@ -53,8 +47,6 @@ void TaskDigitalSignals(void *pvParameters)
             setOutputGpio(orderMsg.order, orderMsg.state);
         }
 
-#ifdef USE_WDG
-        wdgFeed(taskId, xTaskGetTickCount());
-#endif
+        wdgFeedNow(taskId);
     }
 }

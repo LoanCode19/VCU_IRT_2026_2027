@@ -8,58 +8,26 @@
 
 #define POT_SLACK 200
 
+// Calibration, reglee par initThrottleValues() (VCU.c)
 int potmin[2];
 int potmax[2];
-float brknompedal;
-float brkcruise;
 float throtmax;
-float throtmaxRev;
 float throtmin;
 float throtdead;
-int idleSpeed;
-int cruiseSpeed;
-float speedkp;
-int speedflt;
-float idleThrotLim;
-int bmslimhigh;
-int bmslimlow;
-int accelmax;
-int accelflt;
 float udcmin;
-float udcmax;
 float udcDerateMarginV;
-float idcmin;
-float idcmax;
 float speedLimitMs;
 float speedLimitMarginMs;
 float ThrotRpmFilt;
-
-float potnomFiltered;
-float brkRamped;
-
-float UDCres;
-float IDCres;
-float UDCprevspnt = 0;
-float IDCprevspnt = 0;
-
-float throttleRamped = 0.0;
-float SpeedFiltered = 0.0; // limitation des saut de vitesse
-
-#define PedalPosArrLen 50
-float PedalPos;
-float LastPedalPos;
-float PedalChange = 0;
-float PedalPosTot = 0;
-float PedalPosArr[PedalPosArrLen];
-uint8_t PedalPosIdx = 0;
-int8_t PedalReq = 0; // positive is accel negative is decell
-
 float throtRampSpeedMs;
 float throtRampPerS;
 float throtRampMaxPerS;
-
 float motorTempMax;
 float inverterTempMax;
+
+// Etat d'un passage a l'autre (remis a zero par les tests)
+float throttleRamped = 0.0f; // consigne apres la rampe, en %
+float SpeedFiltered = 0.0f;  // vitesse filtree : limite les sauts de vitesse
 
 // Bornes de la course d'un APPS, dans l'ordre croissant : un capteur peut etre monte a l'envers
 // (potmin > potmax)
@@ -117,23 +85,15 @@ float NormalizeThrottle(int potval, int potIdx)
 }
 
 /**
- * @brief Calculate a throttle percentage from the potval input.
+ * @brief Demande du pilote, en %, a partir de la position de la pedale : 0 si le frein est appuye, puis la
+ * zone morte throtdead. Pas de recuperation (D3) : jamais de valeur negative.
  *
- * After the previous range checks, the throttle input potval lies within the
- * range of [potmin[0], potmax[0]]. From this range, the input is converted to
- * a percent range of [-100.0, 100.0].
- *
- * Prerequisit: potval in range.
-
- *
- * TODO: No regen implemented. Commanding 0 throttle while braking, otherwise direct output.
- *
- * @param potVal throttle input between potmin and potmax
- * @param idx Index of the throttle input that should be used for calculation.
- * @param motorControlState struct containing all nessasry data for throttle calculation
- * @return float, value of throttle command between -100.0 and 100.0
+ * @param potnom Position de la pedale, en % de la course (AppsPedalPercent()).
+ * @param speed Vitesse du vehicule, en mm/s : seulement filtree ici, pour suivre la voiture.
+ * @param brake Frein appuye, ou signal du frein douteux (S2).
+ * @return float Demande de 0 a 100 %.
  */
-float CalcThrottle(float potnom, int speed, bool brake) /*int potval, int potIdx, bool brkpedal*/
+float CalcThrottle(float potnom, int speed, bool brake)
 {
 
     if (speed < 0) // make sure speed is not negative
@@ -172,9 +132,6 @@ float CalcThrottle(float potnom, int speed, bool brake) /*int potval, int potIdx
     {
         return 0.0f;
     }
-
-    // substract offset, bring potval to the potmin-potmax scale and make a percentage
-    // potnom = NormalizeThrottle(processedPotVal, processedPotValIdx); // to bring it between 0 and 100
 
     // Apply the deadzone parameter. To avoid that we lose the range between
     // 0 and throtdead, the scale of potnom is mapped from the [0.0, 100.0] scale
@@ -244,7 +201,6 @@ void UdcLimitCommand(float *finalSpnt, float udc)
 
 bool TemperatureDerate(int temp, int tempMax, float *finalSpnt)
 {
-    // uint16_t DerateReason = Param::GetInt(Param::TorqDerate);
     float limit = 0;
 
     if (temp <= tempMax)
@@ -254,8 +210,6 @@ bool TemperatureDerate(int temp, int tempMax, float *finalSpnt)
     else if (temp < (tempMax + 2))
     {
         limit = 50.0f;
-        // DerateReason |= 16;
-        // Param::SetInt(Param::TorqDerate, DerateReason);
     }
 
     if (*finalSpnt >= 0)

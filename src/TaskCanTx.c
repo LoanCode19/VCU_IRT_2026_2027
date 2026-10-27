@@ -50,25 +50,15 @@ CanFrame_t Dti_EncodeDriveEnable(bool enable)
 
 void TaskCanTx(void *pvParameters)
 {
-    TickType_t lastWakeUp = xTaskGetTickCount();
-    unsigned long i = 0;
-    dataMessage_t msg = {0};
-
     CanTxParam_t *params = (CanTxParam_t *)pvParameters;
     QueueHandle_t *xCanTxQueue = params->xCanTxQueue;
     TaskId taskId = params->taskId;
 
     while (1)
     {
-
-        msg.id++;
-        msg.timestamp = xTaskGetTickCount();
-
         dataMessage_t msg = {0};
-        BaseType_t xReturn = xQueueReceive(*xCanTxQueue, &msg, CAN_TX_TIMEOUT);
-        if (xReturn == pdPASS)
+        if (xQueueReceive(*xCanTxQueue, &msg, CAN_TX_TIMEOUT) == pdPASS)
         {
-
             switch (msg.id)
             {
             case inverterTorqueCmdId:
@@ -95,9 +85,6 @@ void TaskCanTx(void *pvParameters)
             }
         }
 
-#ifdef USE_WDG
-        // feed WDG
-        wdgFeed(taskId, xTaskGetTickCount());
-#endif
+        wdgFeedNow(taskId);
     }
 }

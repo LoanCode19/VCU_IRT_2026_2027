@@ -13,7 +13,6 @@
 #include "utils.h"
 #include "my_fp.h"
 #include "vcuState.h"
-#include "project_config.h"
 
 void PrintMainState(const MainState_t *mainState, VcuState_t r2dState, float torqueCmd);
 
@@ -59,7 +58,6 @@ void TaskMain(void *pvParameters)
 
     MainParams_t *params = (MainParams_t *)pvParameters;
     QueueHandle_t *xMainQueue = params->xMainQueue;
-    QueueHandle_t *xTRVPQueu = params->xTRVPQueue;
     QueueHandle_t *xIHMQueue = params->xIHMQueue;
     QueueHandle_t *xCanTxQueue = params->xCanTxQueue;
     TaskId taskId = params->taskId;
@@ -192,10 +190,7 @@ void TaskMain(void *pvParameters)
             PrintMainState(&mainState, r2d.state, torqueCmd);
         }
 
-#ifdef USE_WDG
-        // feed WDG
-        wdgFeed(taskId, xTaskGetTickCount());
-#endif
+        wdgFeedNow(taskId);
 
         vTaskDelayUntil(&lastWake, pdMS_TO_TICKS(CONTROL_PERIOD_MS));
     }

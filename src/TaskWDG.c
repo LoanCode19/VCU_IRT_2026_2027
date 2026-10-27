@@ -1,6 +1,6 @@
 #ifdef USE_WDG
 #include "FreeRTOS.h"
-#include "queue.h"
+#include "task.h"
 
 #include "structs.h"
 #include "project_config.h"
@@ -10,11 +10,6 @@
 #include "utils.h"
 
 #include "stm32Interface.h"
-
-#include <stdio.h>
-#include <stdlib.h>
-#include <stdint.h>
-#include <semphr.h>
 
 WDGTimoutTable wdgTimeoutTable;
 

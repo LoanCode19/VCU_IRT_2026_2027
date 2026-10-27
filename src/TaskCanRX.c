@@ -10,12 +10,6 @@
 #include "console.h"
 #include "TaskCanRX.h"
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <stdint.h>
-#include <semphr.h>
-
-SemaphoreHandle_t xCanRxSemaphore;
 volatile CanRxStats_t canRxStats = {0};
 
 // Table de decodage (lot 4, valeurs du 26/10/2026) : une ligne par signal. Une trame peut porter
@@ -55,11 +49,11 @@ static void SendLatest(QueueHandle_t queue, const dataMessage_t *msg, volatile u
 
 // Le refroidissement recoit aussi les temperatures. Pointeur NULL : pas de refroidissement
 // (tests qui remplissent CanRxParams_t sans ce champ).
-static void SendToCooling(QueueHandle_t *xCoolingQueue, const dataMessage_t *msg)
+static void SendToCooling(QueueHandle_t *coolingQueue, const dataMessage_t *msg)
 {
-    if ((xCoolingQueue != NULL) && (*xCoolingQueue != NULL))
+    if ((coolingQueue != NULL) && (*coolingQueue != NULL))
     {
-        SendLatest(*xCoolingQueue, msg, &canRxStats.lostCooling);
+        SendLatest(*coolingQueue, msg, &canRxStats.lostCooling);
     }
 }
 
@@ -169,29 +163,22 @@ void CanRx_OnFrameFromISR(const CanFrame_t *frame, BaseType_t *higherPriorityTas
 void TaskCanRx(void *pvParameters)
 {
     CanRxParams_t *params = (CanRxParams_t *)pvParameters;
-    QueueHandle_t *xCanRxQueue = params->xCanRxQueue;
+    QueueHandle_t *rxQueue = params->xCanRxQueue;
     TaskId taskId = params->taskId;
-
-    TickType_t timeNow = xTaskGetTickCount();
 
     while (1)
     {
         CanFrame_t frame = {0};
 
-        xQueuePeek(*xCanRxQueue, &frame, CAN_RX_TIMEOUT);
+        xQueuePeek(*rxQueue, &frame, CAN_RX_TIMEOUT);
         console_print("------(B)CanRx------\n");
 
-        while ((xQueueReceive(*xCanRxQueue, &frame, pdMS_TO_TICKS(0))) == pdPASS)
+        while ((xQueueReceive(*rxQueue, &frame, pdMS_TO_TICKS(0))) == pdPASS)
         {
             ProcessFrame(params, &frame);
         }
 
-        // console_print((ledState = !ledState) ? "Led ON\n" : "Led OFF\n");
-
-#ifdef USE_WDG
-        // feed WDG
-        wdgFeed(taskId, xTaskGetTickCount());
-#endif
+        wdgFeedNow(taskId);
 
         console_print("------(E)CanRx------\n\n");
     }

@@ -1,11 +1,13 @@
-#include <stdint.h>
+#ifndef STRUCTS_H
+#define STRUCTS_H
+
 #include <stdbool.h>
+#include <stdint.h>
+
 #include "FreeRTOS.h"
 #include "queue.h"
 #include "project_config.h"
 
-#ifndef STRUCTS_H
-#define STRUCTS_H
 // enums
 typedef enum
 {
@@ -79,14 +81,6 @@ typedef struct
 } CanFrame_t;
 
 typedef TickType_t WDGTimoutTable[MAX_TASKS];
-
-typedef enum speedStatus
-{
-    SPEED_VALID,
-    SPEED_DEGRADED,
-    SPEED_INVALID
-
-} SpeedStatus;
 
 typedef enum Order
 {
