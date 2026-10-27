@@ -277,6 +277,63 @@ static void TestChaine_R2DAndFaults(void)
              on, durationMs);
 }
 
+// S3p : pour entrer en R2D, le frein doit etre lu a 1 dans une trame valide. sBrakeAtSwitch : valeur du frein
+// pendant le passage de l'interrupteur sur ON (-1 : signal du frein jamais recu).
+static int32_t sBrakeAtSwitch;
+
+static void SwitchOnWithBrake(unsigned pass, TickType_t now)
+{
+    Push(xMainQueue, tsActiveId, 1, now);
+    Push(xMainQueue, sdcClosedId, 1, now);
+    Push(xMainQueue, r2dSwitchId, (pass == 0U) ? 0 : 1, now);
+    if (sBrakeAtSwitch >= 0)
+    {
+        Push(xMainQueue, brakePressedId, (pass == 0U) ? 0 : sBrakeAtSwitch, now);
+    }
+    Push(xMainQueue, processedThrottleId, FP_FROMFLT(40.0f), now);
+    Push(xMainQueue, calculatedSpeedId, 0, now);
+    Push(xMainQueue, motor_tempId, 40, now);
+    Push(xMainQueue, inverter_tempId, 40, now);
+    Push(xMainQueue, voltageId, 350, now);
+}
+
+// Consigne et Drive enable de la derniere passe : interrupteur sur OFF, puis sur ON avec ce frein, pedale a 40 %
+static float TorqueAfterSwitchOn(int32_t brake, int *driveEnable)
+{
+    Setup();
+    sBrakeAtSwitch = brake;
+    TestRunMain(&sMainParams, TEST_R2D_PASSES, SwitchOnWithBrake);
+    float torque = 0.0f;
+    if (!TestLastTorque(&torque))
+    {
+        torque = 0.0f;
+    }
+    *driveEnable = sTestRun.driveEnable[sTestRun.passes - 1U];
+    return torque;
+}
+
+// Un frein douteux coupe le couple (S2c), mais il ne doit jamais autoriser l'entree en R2D (EV 4.11.7)
+static void TestChaine_R2DNeedsBrake(void)
+{
+    int enablePressed = -1;
+    int enableInvalid = -1;
+    int enableMissing = -1;
+    float pressed = TorqueAfterSwitchOn(1, &enablePressed);
+    float invalid = TorqueAfterSwitchOn(2, &enableInvalid);
+    float missing = TorqueAfterSwitchOn(-1, &enableMissing);
+    if ((pressed <= 0.0f) || (enablePressed != 1))
+    {
+        vt_blocked("S3p", "EV 4.11.7", "frein lu a 1 : pas de R2D, cas du frein douteux non verifiable");
+        return;
+    }
+    vt_check("S3p", "EV 4.11.7",
+             (invalid <= 0.0f) && (enableInvalid != 1) && (missing <= 0.0f) && (enableMissing != 1),
+             "interrupteur passe sur ON, pedale 40 %% : frein lu a 1 -> consigne %.1f %%, Drive enable %d ; frein a une "
+             "valeur invalide (2) -> %.1f %%, Drive enable %d ; signal du frein jamais recu -> %.1f %%, Drive enable %d "
+             "(attendu du couple, puis pas de R2D dans les deux autres cas)",
+             pressed, enablePressed, invalid, enableInvalid, missing, enableMissing);
+}
+
 int main(void)
 {
     vt_begin("Chaine de couple TRVP -> Main -> CanTx");
@@ -297,6 +354,7 @@ int main(void)
              count, (unsigned long)maxGap);
 
     TestChaine_R2DAndFaults();
+    TestChaine_R2DNeedsBrake();
 
     if (!chainWorks)
     {
