@@ -37,6 +37,15 @@ float AppsPedalPercent(const dataMessage_t *apps1)
     return NormalizeThrottle(AppsClamp(apps1->data, 0), 0);
 }
 
+// Frein + accelerateur (S9, T10) : true tant que le couple reste coupe apres un appui sur le frein avec la pedale
+// au-dessus de BRAKE_THROTTLE_LATCH_PERCENT
+static bool sBrakeThrottleLatched = false;
+
+void ResetThrottleState(void)
+{
+    sBrakeThrottleLatched = false;
+}
+
 float GetUserThrottleCommand(const dataMessage_t *pot1val, const dataMessage_t *pot2val, int speed, bool brake)
 {
     if (pot1val == NULL || pot2val == NULL)
@@ -51,7 +60,17 @@ float GetUserThrottleCommand(const dataMessage_t *pot1val, const dataMessage_t *
     {
         return 0.0f;
     }
-    return CalcThrottle(AppsPedalPercent(pot1val), speed, brake);
+    float pedal = AppsPedalPercent(pot1val);
+    if (brake && (pedal > BRAKE_THROTTLE_LATCH_PERCENT))
+    {
+        sBrakeThrottleLatched = true;
+    }
+    else if (sBrakeThrottleLatched && (pedal < BRAKE_THROTTLE_RELEASE_PERCENT))
+    {
+        sBrakeThrottleLatched = false;
+    }
+    float command = CalcThrottle(pedal, speed, brake); // appelee meme verrouillee : le filtre de vitesse suit
+    return sBrakeThrottleLatched ? 0.0f : command;
 }
 
 // Une incoherence qui dure plus de APPS_FAULT_CONFIRM_MS est confirmee : le couple reste coupe meme

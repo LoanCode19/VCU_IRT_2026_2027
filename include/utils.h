@@ -5,6 +5,7 @@
 float GetUserThrottleCommand(const dataMessage_t *pot1val, const dataMessage_t *pot2val, int speed, bool brake);
 bool AppsImplausible(const dataMessage_t *apps1, const dataMessage_t *apps2);
 float AppsPedalPercent(const dataMessage_t *apps1);
+void ResetThrottleState(void); // S9 (T10) : efface le verrou frein + accelerateur
 
 // Surveillance des APPS dans TaskRawValuesProcessing (S1, D2)
 typedef struct

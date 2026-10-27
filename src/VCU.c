@@ -138,4 +138,6 @@ void initThrottleValues()
 
     motorTempMax = 100.0f;
     inverterTempMax = 90.0f;
+
+    ResetThrottleState(); // S9 (T10) : pas de verrou frein + accelerateur au demarrage
 }
