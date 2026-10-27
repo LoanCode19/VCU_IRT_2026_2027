@@ -56,7 +56,7 @@ LEGACY_RE = re.compile(r"^(PASS|FAIL): ")
 
 
 def include_flags():
-    # Les faux en-tetes FreeRTOS passent avant include/ (qui contient un FreeRTOSConfig.h de demo)
+    # Les faux en-tetes FreeRTOS passent avant ceux du code VCU
     return [f"-I{HOST / 'include'}", f"-I{COMMON}", f"-I{INCLUDE}"]
 
 
