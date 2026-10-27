@@ -44,6 +44,12 @@ static float SettledProcess(float request, int speed, int motorTemp, int inverte
     return out;
 }
 
+// Pente de la rampe de montee a basse vitesse, en %/s
+static float RampPerS(void)
+{
+    return throtRamp * 100.0f; // throtRamp est en %/10 ms
+}
+
 static void ResetState(void)
 {
     initThrottleValues();
@@ -135,6 +141,18 @@ static void TestCouple_Ramp(void)
     vt_check("R1a", "-", second == first,
              "2 appels sans que le temps avance -> %.1f %% puis %.1f %% (attendu identiques : rampe en %%/s, pas par appel)",
              first, second);
+
+    // La rampe doit avancer du temps ecoule, quel que soit le nombre d'appels
+    ResetState();
+    float out = 0.0f;
+    for (int i = 0; i < 100; i++)
+    {
+        out = Process(50.0f, 0.0f, NOMINAL_TEMP, NOMINAL_TEMP, NOMINAL_UDC, 1U);
+    }
+    float expected = RampPerS() * 0.1f;
+    vt_check("R1b", "-", (out > expected - 0.5f) && (out < expected + 0.5f),
+             "consigne 50 %%, 100 appels espaces de 1 ms -> %.1f %% (attendu %.1f : %.0f %%/s pendant 100 ms)", out,
+             expected, RampPerS());
 }
 
 static void TestCouple_TemperatureDerate(void)

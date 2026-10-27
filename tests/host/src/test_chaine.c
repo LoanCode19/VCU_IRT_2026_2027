@@ -81,6 +81,32 @@ static bool RunChain(ChainInputs_t in, float *torque)
     return true;
 }
 
+// R1 : TaskMain pendant 100 ms sans aucun message. Renvoie le plus long ecart entre deux consignes, du debut
+// a la fin de la fenetre, d'apres l'heure que Main ecrit dans chaque consigne.
+static TickType_t MainSilentMaxGap(unsigned *count)
+{
+    Setup();
+    vTestSetDelayCallsBeforeEscape(9U, NULL);  // boucle periodique : 10 passages
+    vTestSetBlockingTimeoutsBeforeEscape(1U); // boucle reveillee par la queue : une attente de 100 ms
+    RunTaskOnce(TaskMain, &sMainParams);
+    vTestSetDelayCallsBeforeEscape(0U, NULL);
+    vTestSetBlockingTimeoutsBeforeEscape(0U);
+
+    TickType_t previous = T_NOW;
+    TickType_t maxGap = 0;
+    dataMessage_t cmd = {0};
+    *count = 0;
+    while (xQueueReceive(xCanTxQueue, &cmd, 0) == pdPASS)
+    {
+        TickType_t gap = cmd.timestamp - previous;
+        maxGap = (gap > maxGap) ? gap : maxGap;
+        previous = cmd.timestamp;
+        (*count)++;
+    }
+    TickType_t end = T_NOW + 100U;
+    return ((end > previous) && ((end - previous) > maxGap)) ? (end - previous) : maxGap;
+}
+
 // Ordre envoye par Main a l'IHM pour le voyant defaut, apres RunChain : -1 aucun, 0 eteint, 1 allume
 static int FaultLightOrder(void)
 {
@@ -107,6 +133,13 @@ int main(void)
     bool chainWorks = vt_check("B2a", "-", sent && (torque > 0.0f),
                                "APPS 40 %%, donnees fraiches -> consigne %s %.1f %% (attendu > 0)",
                                sent ? "envoyee" : "NON envoyee", torque);
+
+    unsigned count = 0;
+    TickType_t maxGap = MainSilentMaxGap(&count);
+    vt_check("R1d", "-", maxGap <= 20U,
+             "Main pendant 100 ms sans aucun message -> %u consigne(s), plus long ecart %lu ms (attendu au plus 20 ms : "
+             "le DTI coupe apres 100 ms sans consigne)",
+             count, (unsigned long)maxGap);
 
     if (!chainWorks)
     {
