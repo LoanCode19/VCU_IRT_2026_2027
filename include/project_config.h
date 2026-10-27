@@ -13,10 +13,16 @@
 #define CAN_RX_TIMEOUT pdMS_TO_TICKS(100)
 #define CAN_TX_TIMEOUT pdMS_TO_TICKS(100)
 
-// Boucle de controle (R1, T3, appliquee au lot 5, revisable) : TRVP et Main font une passe toutes les
+// Boucle de controle (R1, T3, decide le 27/10/2026, revisable) : TRVP et Main font une passe toutes les
 // 10 ms, quel que soit le trafic CAN. Apres une pause, la rampe n'avance que du temps de deux periodes.
 #define CONTROL_PERIOD_MS 10U
 #define CONTROL_MAX_ELAPSED_MS 20U
+
+// Queues de TRVP et de Main (T16, decide le 27/10/2026, revisable) : videes toutes les 10 ms, elles gardent
+// de la marge pour des capteurs deux fois plus rapides que prevu (12 messages par periode vers TRVP).
+// Queue pleine : le plus ancien message laisse sa place et la perte est comptee (T13).
+#define TRVP_QUEUE_LENGTH 20U
+#define MAIN_QUEUE_LENGTH 20U
 
 #define MAIN_WDG_TIMEOUT pdMS_TO_TICKS(500)
 #define TRVP_WDG_TIMEOUT pdMS_TO_TICKS(500)
@@ -46,11 +52,12 @@
 #define WHEEL_SPEED_PROVISIONAL 1 // a retirer quand les deux valeurs ci-dessous sont mesurees (test D7a)
 #define WHEEL_SENSOR_RAW_IS_RPM 1 // hypothese : le capteur donne des tr/min de roue
 #define WHEEL_RADIUS_M 0.20f      // hypothese : rayon sous charge, a mesurer
-// Ecart maximal entre deux roues pour les moyenner (T18, a regler en roulant)
+// Ecart maximal entre deux roues pour les moyenner (T18, decide le 27/10/2026, revisable ; a regler en roulant)
 #define WHEEL_MAX_DIFF_MMS 1000
 
 // Traces des taches de la chaine de couple (TRVP, Main) : leur etat une fois par seconde, jamais a chaque
-// passage (T17). La console SWV de la carte ne suit pas 100 passages par seconde.
+// passage (T17, decide le 27/10/2026, revisable). La console SWV de la carte ne suit pas 100 passages par
+// seconde.
 #define TRACE_PERIOD_MS 1000
 
 #endif // PROJECT_CONFIG_H
