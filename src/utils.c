@@ -15,6 +15,26 @@
 
 #define MAX_DIFF_WHEELS 30
 
+// Incoherence des APPS (S1, T 11.8.8, T 11.8.9, T 11.9.2) : un capteur absent ou en retard, hors plage,
+// ou plus de APPS_MAX_DIFF_PERCENT points d'ecart entre les deux
+bool AppsImplausible(const dataMessage_t *apps1, const dataMessage_t *apps2)
+{
+    if ((apps1->timeStatus != STATUS_TIME_OK) || (apps2->timeStatus != STATUS_TIME_OK) ||
+        !AppsInRange(apps1->data, 0) || !AppsInRange(apps2->data, 1))
+    {
+        return true;
+    }
+    float pot1nom = NormalizeThrottle(AppsClamp(apps1->data, 0), 0);
+    float pot2nom = NormalizeThrottle(AppsClamp(apps2->data, 1), 1);
+    return ABS(pot2nom - pot1nom) > APPS_MAX_DIFF_PERCENT;
+}
+
+// Position de la pedale, en % de la course, lue sur APPS1 : c'est elle qui donne le couple
+float AppsPedalPercent(const dataMessage_t *apps1)
+{
+    return NormalizeThrottle(AppsClamp(apps1->data, 0), 0);
+}
+
 float GetUserThrottleCommand(const dataMessage_t *pot1val, const dataMessage_t *pot2val, int speed, bool brake)
 {
     if (pot1val == NULL || pot2val == NULL)
@@ -23,63 +43,39 @@ float GetUserThrottleCommand(const dataMessage_t *pot1val, const dataMessage_t *
         return 0.0f;
     }
 
-    bool pot1TimeValid = (pot1val->timeStatus == STATUS_TIME_OK);
-    bool pot2TimeValid = (pot2val->timeStatus == STATUS_TIME_OK);
-
-    bool inRange1 = AppsInRange(pot1val->data, 0);
-    bool inRange2 = AppsInRange(pot2val->data, 1);
-
-    bool pot1Valid = pot1TimeValid && inRange1;
-    bool pot2Valid = pot2TimeValid && inRange2;
-
-    // Pourcentage de la course (0 a 100 %), calcule sur la valeur bornee
-    float pot1nom = NormalizeThrottle(AppsClamp(pot1val->data, 0), 0);
-    float pot2nom = NormalizeThrottle(AppsClamp(pot2val->data, 1), 1);
-
-    // when there's something wrong with the dual throttle values,
-    // we try to make the best of it and use the valid one
-    if (pot1Valid && pot2Valid)
+    // Aucun mode degrade : couple coupe des le premier cycle incoherent, plus tot que les 100 ms
+    // permis par T 11.8.8. La confirmation de la faute est faite par AppsMonitorStep(), dans TRVP.
+    if (AppsImplausible(pot1val, pot2val))
     {
+        return 0.0f;
+    }
+    return CalcThrottle(AppsPedalPercent(pot1val), speed, brake);
+}
 
-        if (ABS(pot2nom - pot1nom) > 10.0f) // si la difference est trop grande, on prend la valeure la plus petite, et si elle est trop grande
-        {                                   // on la met a 50%de potmax
-            // utils::PostErrorIfRunning(ERR_THROTTLE12DIFF);
-
-            // simple implementation of a limp mode: select the lower of
-            // the two throttle inputs and limiting the throttle value
-            // to 50%
-            if (pot1nom < pot2nom)
-            {
-                pot1nom = MIN(pot1nom, 50.0f);
-                return CalcThrottle(pot1nom, speed, brake);
-            }
-            else
-            {
-                pot2nom = MIN(pot2nom, 50.0f);
-                return CalcThrottle(pot2nom, speed, brake);
-            }
+// Une incoherence qui dure plus de APPS_FAULT_CONFIRM_MS est confirmee : le couple reste coupe meme
+// quand les APPS redeviennent coherents, jusqu'a ce que la pedale repasse sous
+// APPS_FAULT_RELEASE_PERCENT (D2). Renvoie true si le couple est autorise ce cycle.
+bool AppsMonitorStep(AppsMonitor_t *monitor, bool implausibleNow, float pedalPercent, TickType_t now)
+{
+    if (implausibleNow)
+    {
+        if (!monitor->implausible)
+        {
+            monitor->implausible = true;
+            monitor->since = now;
         }
-        return CalcThrottle(pot1nom, speed, brake);
+        if ((TickType_t)(now - monitor->since) > pdMS_TO_TICKS(APPS_FAULT_CONFIRM_MS))
+        {
+            monitor->latched = true;
+        }
+        return false;
     }
-    else if (pot1Valid && !pot2Valid)
+    monitor->implausible = false;
+    if (monitor->latched && (pedalPercent < APPS_FAULT_RELEASE_PERCENT))
     {
-        // utils::PostErrorIfRunning(ERR_THROTTLE2);
-        pot1nom = MIN(pot1nom, 50.0f);
-        return CalcThrottle(pot1nom, speed, brake);
+        monitor->latched = false;
     }
-    else if (!pot1Valid && pot2Valid)
-    {
-        // utils::PostErrorIfRunning(ERR_THROTTLE1);
-        pot2nom = MIN(pot2nom, 50.0f);
-        return CalcThrottle(pot2nom, speed, brake);
-    }
-    else // !pot1Valid && !pot2Valid
-    {
-        // utils::PostErrorIfRunning(ERR_THROTTLE12);
-        return 0.0;
-    }
-
-    return 0.0;
+    return !monitor->latched;
 }
 
 float ProcessThrottle(float finalSpnt, int speed, int motorTemp, int inverterTemp, float voltage)

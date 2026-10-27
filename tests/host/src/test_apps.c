@@ -1,6 +1,6 @@
 // Secteur : pedale d'accelerateur (APPS) et frein
 // Code teste : GetUserThrottleCommand() (src/utils.c), AppsInRange() / AppsClamp() / CalcThrottle() (src/throttle.c)
-// Problemes : S1, S4, S6, S9 de AUDIT_VCU.md
+// Problemes : S1, S4, S6, S9 de AUDIT_VCU.md, et la decision D2
 
 #include <stdbool.h>
 
@@ -79,6 +79,38 @@ static void TestApps_Plausibility(void)
              "APPS 40 %% / 49 %% (ecart 9 pts, tolere) -> couple %.1f %% (attendu ~39, pas de coupure)", torque);
 }
 
+// Surveillance de TRVP (AppsMonitorStep) : une incoherence de plus de 100 ms est confirmee, et le couple
+// ne revient qu'avec des APPS coherents et la pedale sous 5 % (D2)
+static void TestApps_Monitor(void)
+{
+    AppsMonitor_t monitor = {0};
+    bool first = AppsMonitorStep(&monitor, true, 40.0f, 1000U);
+    vt_check("S1g", "T 11.8.8", !first, "premier cycle incoherent -> couple %s (attendu coupe)",
+             first ? "autorise" : "coupe");
+
+    (void)AppsMonitorStep(&monitor, true, 40.0f, 1100U); // 100 ms tout juste
+    bool after100 = AppsMonitorStep(&monitor, false, 40.0f, 1110U);
+    vt_check("S1h", "T 11.8.8", after100,
+             "incoherence de 100 ms, puis APPS coherents a 40 %% -> couple %s (attendu autorise : faute non confirmee)",
+             after100 ? "autorise" : "coupe");
+
+    monitor = (AppsMonitor_t){0};
+    (void)AppsMonitorStep(&monitor, true, 40.0f, 1000U);
+    (void)AppsMonitorStep(&monitor, true, 40.0f, 1101U);
+    bool at40 = AppsMonitorStep(&monitor, false, 40.0f, 1110U);
+    bool at6 = AppsMonitorStep(&monitor, false, 6.0f, 1500U);
+    vt_check("S1i", "T 11.8.8", !at40 && !at6,
+             "incoherence de 101 ms, puis APPS coherents a 40 %% puis 6 %% -> couple %s puis %s (attendu coupe et "
+             "coupe : faute confirmee)",
+             at40 ? "autorise" : "coupe", at6 ? "autorise" : "coupe");
+
+    bool released = AppsMonitorStep(&monitor, false, 4.0f, 1600U);
+    bool again = AppsMonitorStep(&monitor, false, 40.0f, 1700U);
+    vt_check("S1j", "-", released && again,
+             "faute confirmee, pedale a 4 %% (D2) puis 40 %% -> couple %s puis %s (attendu autorise et autorise)",
+             released ? "autorise" : "coupe", again ? "autorise" : "coupe");
+}
+
 static void TestApps_InputNotModified(void)
 {
     // APPS2 monte a l'envers (potmin > potmax), comme le permet le code et le suggere T 11.8.6
@@ -142,6 +174,7 @@ int main(void)
     ResetSpeedFilter();
 
     TestApps_Plausibility();
+    TestApps_Monitor();
     TestApps_InputNotModified();
     TestApps_PedalReleased();
     TestApps_BrakePlausibility();

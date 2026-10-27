@@ -23,4 +23,11 @@
 #define DS_WDG_TIMEOUT pdMS_TO_TICKS(500)
 #define COOLING_WDG_TIMEOUT pdMS_TO_TICKS(500)
 
+// Pedale d'accelerateur (S1) : plus de 10 points d'ecart entre les deux APPS = incoherence (T 11.8.8),
+// confirmee si elle dure plus de 100 ms. Le couple revient ensuite quand les APPS sont coherents et que
+// la pedale est sous 5 % (D2, decide le 27/10/2026, revisable).
+#define APPS_MAX_DIFF_PERCENT 10.0f
+#define APPS_FAULT_CONFIRM_MS 100U
+#define APPS_FAULT_RELEASE_PERCENT 5.0f
+
 #endif // PROJECT_CONFIG_H
