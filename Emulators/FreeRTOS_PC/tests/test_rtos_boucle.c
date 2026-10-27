@@ -17,7 +17,7 @@
 // Pente de la rampe de montee a basse vitesse, en %/s
 static float RampPerS(void)
 {
-    return throtRamp * 100.0f; // throtRamp est en %/10 ms
+    return throtRampPerS;
 }
 
 // Valeur brute d'un APPS pour un pourcentage de sa course (calibration de initThrottleValues())

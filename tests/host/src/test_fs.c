@@ -93,8 +93,7 @@ static bool RunMain(float pedalPercent, TickType_t commandTimestamp, float *torq
 // Un appel de ProcessThrottle() a l'arret, temperatures et tension nominales, elapsedMs apres le precedent
 static float ProcessAtRest(float request, uint32_t elapsedMs)
 {
-    (void)elapsedMs; // la rampe avance encore d'un pas par appel (R1)
-    return ProcessThrottle(request, 0, 40, 40, 350.0f);
+    return ProcessThrottle(request, 0, 40, 40, 350.0f, elapsedMs);
 }
 
 // ----------------------------------------------------------------------------------------------

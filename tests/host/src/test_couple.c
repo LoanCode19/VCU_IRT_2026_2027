@@ -29,8 +29,7 @@ static void SettleSpeed(int speed)
 // Un appel de ProcessThrottle(), elapsedMs apres le precedent
 static float Process(float request, float speed, int motorTemp, int inverterTemp, float udc, uint32_t elapsedMs)
 {
-    (void)elapsedMs; // la rampe avance encore d'un pas par appel (R1)
-    return ProcessThrottle(request, (int)speed, motorTemp, inverterTemp, udc);
+    return ProcessThrottle(request, (int)speed, motorTemp, inverterTemp, udc, elapsedMs);
 }
 
 // Appels repetes, toutes les 10 ms, pour sortir de la rampe et du filtre de SpeedLimitCommand.
@@ -47,7 +46,7 @@ static float SettledProcess(float request, int speed, int motorTemp, int inverte
 // Pente de la rampe de montee a basse vitesse, en %/s
 static float RampPerS(void)
 {
-    return throtRamp * 100.0f; // throtRamp est en %/10 ms
+    return throtRampPerS;
 }
 
 static void ResetState(void)
@@ -153,6 +152,15 @@ static void TestCouple_Ramp(void)
     vt_check("R1b", "-", (out > expected - 0.5f) && (out < expected + 0.5f),
              "consigne 50 %%, 100 appels espaces de 1 ms -> %.1f %% (attendu %.1f : %.0f %%/s pendant 100 ms)", out,
              expected, RampPerS());
+
+    // Apres une pause (tache retardee, debogueur), la rampe n'avance que de CONTROL_MAX_ELAPSED_MS
+    ResetState();
+    float afterPause = Process(50.0f, 0.0f, NOMINAL_TEMP, NOMINAL_TEMP, NOMINAL_UDC, 1000U);
+    float maxStep = RampPerS() * (float)CONTROL_MAX_ELAPSED_MS / 1000.0f;
+    vt_check("R1c", "-", afterPause <= maxStep + 0.01f,
+             "consigne 50 %%, appel 1 s apres le precedent -> %.1f %% (attendu au plus %.1f : la rampe n'avance que "
+             "de %u ms apres une pause)",
+             afterPause, maxStep, CONTROL_MAX_ELAPSED_MS);
 }
 
 static void TestCouple_TemperatureDerate(void)

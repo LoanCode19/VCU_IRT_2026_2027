@@ -78,20 +78,13 @@ bool AppsMonitorStep(AppsMonitor_t *monitor, bool implausibleNow, float pedalPer
     return !monitor->latched;
 }
 
-float ProcessThrottle(float finalSpnt, int speed, int motorTemp, int inverterTemp, float voltage)
+float ProcessThrottle(float finalSpnt, int speed, int motorTemp, int inverterTemp, float voltage, uint32_t elapsedMs)
 {
     // we claculate messageTimouts here to minimize the probability of a context switch that would make the time_now
     // not reliable. If Max timouts are big enough, that should not pose any problem.
     // float limitMsgTimeouts = checkMessageTimeStamps(motorState, globalState, time_now);
 
-    if (speed < throtRampRpm)
-    {
-        actualThrottleRamp = throtRamp;
-    }
-    else
-    {
-        actualThrottleRamp = throtRampMax;
-    }
+    float rampPerS = (speed < throtRampRpm) ? throtRampPerS : throtRampMaxPerS; // pente de la montee, en %/s
 
     // Throttle::UdcLimitCommand(finalSpnt,Variable             s::GetFloat(Variables::udc));
     // Throttle::IdcLimitCommand(finalSpnt, ABS(Variables::GetFloat(Variables::idc)));
@@ -107,7 +100,8 @@ float ProcessThrottle(float finalSpnt, int speed, int motorTemp, int inverterTem
         console_print("derating because of inverter temprature\n");
     }
 
-    finalSpnt = RampThrottle(finalSpnt);
+    // Apres une pause (tache retardee, debogueur), la rampe n'avance que de CONTROL_MAX_ELAPSED_MS (R1)
+    finalSpnt = RampThrottle(finalSpnt, rampPerS, MIN(elapsedMs, CONTROL_MAX_ELAPSED_MS));
 
     // make sure the torque percentage is NEVER out of range
     if (finalSpnt < -100.0f)

@@ -6,14 +6,17 @@
 
 // Periode de TaskWDG : bien plus courte que l'IWDG de la carte (environ 500 ms), sinon reset en boucle
 #define WDG_PERIOD pdMS_TO_TICKS(100)
-#define MAIN_TIMOUT pdMS_TO_TICKS(100)
-#define TRVP_TIMEOUT pdMS_TO_TICKS(100)
 #define IHM_TIMEOUT pdMS_TO_TICKS(100)
 #define DS_TIMEOUT pdMS_TO_TICKS(100)
 // Attente maximale de CanRx et CanTx : elles nourrissent le watchdog au moins a ce rythme,
 // meme sans trafic. La perte du bus est geree par les timeouts des donnees, pas par le watchdog.
 #define CAN_RX_TIMEOUT pdMS_TO_TICKS(100)
 #define CAN_TX_TIMEOUT pdMS_TO_TICKS(100)
+
+// Boucle de controle (R1, T3, appliquee au lot 5, revisable) : TRVP et Main font une passe toutes les
+// 10 ms, quel que soit le trafic CAN. Apres une pause, la rampe n'avance que du temps de deux periodes.
+#define CONTROL_PERIOD_MS 10U
+#define CONTROL_MAX_ELAPSED_MS 20U
 
 #define MAIN_WDG_TIMEOUT pdMS_TO_TICKS(500)
 #define TRVP_WDG_TIMEOUT pdMS_TO_TICKS(500)

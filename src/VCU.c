@@ -121,10 +121,10 @@ void initThrottleValues()
     throtmin = 0.0f;     // Min throttle limit (%)
     throtdead = 2.0f;    // Deadband around 0% p
 
-    regenRamp = 2.0f;    // %/10ms rate of change for regen
-    throtRamp = 3.0f;    // %/10ms rate of chang
-    throtRampMax = 5.0f; // %/10ms rate of chang
-    throtRampRpm = 2000; // RPM at which to switch from throtRamp to throtRampMax
+    // Rampes de montee en %/s (R1) : les 3 et 5 %/10 ms d'avant. Pas de rampe de recuperation (D3).
+    throtRampPerS = 300.0f;    // %/s sous throtRampRpm
+    throtRampMaxPerS = 500.0f; // %/s au-dessus
+    throtRampRpm = 2000;       // RPM at which to switch from throtRampPerS to throtRampMaxPerS
 
     udcmin = 250.0f;  // Min DC bus voltage (V)
     udcmax = 410.0f;  // Max DC bus voltage (V)

@@ -2,6 +2,7 @@
 
 #include "FreeRTOS.h"
 #include "queue.h"
+#include "task.h"
 
 #include "structs.h"
 #include "project_config.h"
@@ -26,6 +27,10 @@
 
 void printTRVPState(const TRVPState_t *state, float pedalCmd);
 
+// Messages perdus parce que la queue de Main etait pleine (lisible au debogueur). TRVP n'attend pas : sa
+// boucle garde sa periode (R1).
+static uint32_t trvpSendFailures = 0;
+
 void TaskRawValuesProcessing(void *pvParameters)
 {
     TRVPState_t trvpState = {0};
@@ -45,12 +50,12 @@ void TaskRawValuesProcessing(void *pvParameters)
     trvpState.appsValues[0].timeStatus = STATUS_NOT_READY;
     trvpState.appsValues[1].timeStatus = STATUS_NOT_READY;
 
+    // R1 (T3) : une passe toutes les CONTROL_PERIOD_MS, quel que soit le trafic CAN
+    TickType_t lastWake = xTaskGetTickCount();
+
     while (1)
     {
-        TickType_t timeNow = xTaskGetTickCount();
         dataMessage_t msg = {0};
-        xQueuePeek(*xTRVPQueue, &msg, TRVP_TIMEOUT);
-
         while ((xQueueReceive(*xTRVPQueue, &msg, pdMS_TO_TICKS(0))) == pdPASS)
         {
             msg.timeStatus = STATUS_TIME_OK;
@@ -102,8 +107,14 @@ void TaskRawValuesProcessing(void *pvParameters)
             .data = trvpState.speed, // convert to percentage and send as int
             .timestamp = xTaskGetTickCount()};
 
-        xQueueSend(*xMainQueue, &throttleMsg, pdMS_TO_TICKS(100));
-        xQueueSend(*xMainQueue, &speedMsg, pdMS_TO_TICKS(100));
+        if (xQueueSend(*xMainQueue, &throttleMsg, 0) != pdPASS)
+        {
+            trvpSendFailures++;
+        }
+        if (xQueueSend(*xMainQueue, &speedMsg, 0) != pdPASS)
+        {
+            trvpSendFailures++;
+        }
 
         trvpState.lastCallTimeStmp = xTaskGetTickCount();
 
@@ -118,6 +129,8 @@ void TaskRawValuesProcessing(void *pvParameters)
         // feed WDG
         wdgFeed(taskId, xTaskGetTickCount());
 #endif
+
+        vTaskDelayUntil(&lastWake, pdMS_TO_TICKS(CONTROL_PERIOD_MS));
     }
 }
 

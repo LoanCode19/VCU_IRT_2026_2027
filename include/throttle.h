@@ -8,7 +8,7 @@ bool AppsInRange(int32_t raw, int potIdx);
 int32_t AppsClamp(int32_t raw, int potIdx);
 float NormalizeThrottle(int potval, int potIdx);
 bool TemperatureDerate(int temp, int tempMax, float *finalSpnt);
-float RampThrottle(float finalSpnt);
+float RampThrottle(float potnom, float rampPerS, uint32_t elapsedMs);
 float CalcThrottle(float potnom, int speed, bool brake);
 
 float CalcIdleSpeed(int speed);
@@ -29,8 +29,6 @@ extern int cruiseSpeed;
 extern float speedkp;
 extern int speedflt;
 extern float idleThrotLim;
-extern float regenRamp;
-extern float actualThrottleRamp;
 extern int bmslimhigh;
 extern int bmslimlow;
 extern int accelmax;
@@ -46,8 +44,8 @@ extern float potnomFiltered;
 extern float brkRamped;
 
 extern int throtRampRpm;
-extern float throtRamp;
-extern float throtRampMax;
+extern float throtRampPerS;
+extern float throtRampMaxPerS;
 
 extern float motorTempMax;
 extern float inverterTempMax;

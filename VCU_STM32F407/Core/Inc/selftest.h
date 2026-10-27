@@ -6,7 +6,7 @@
 // (port 0), qu'on peut decocher pour qu'elles ne ralentissent pas la carte. Remettre 0 avant de commiter.
 //   0 : desactive. Toujours 0 dans le depot (verifie par le test C4b)
 //   1 : observation. Une ligne par seconde (compteurs CAN, tas minimum). L'autotest n'envoie rien, mais
-//       le VCU emet sa consigne toutes les 100 ms : sans transceiver, elle echoue (un bus-off toutes les 3 s)
+//       le VCU emet sa consigne toutes les 10 ms (R1) : sans transceiver, chaque emission echoue (bus-off repetes)
 //   2 : CAN en boucle interne. La carte s'envoie les trames des capteurs et de l'onduleur ; le VCU
 //       emet sa consigne 0x0A4, recue en retour (essais C-C1a et consigne)
 //   3 : CAN en mode normal, sans transceiver. Chaque emission echoue : bus-off, puis reprise (C-C6a)

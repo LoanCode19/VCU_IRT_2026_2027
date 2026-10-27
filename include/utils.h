@@ -15,7 +15,7 @@ typedef struct
 } AppsMonitor_t;
 
 bool AppsMonitorStep(AppsMonitor_t *monitor, bool implausibleNow, float pedalPercent, TickType_t now);
-float ProcessThrottle(float finalSpnt, int speed, int motorTemp, int inverterTemp, float voltage);
+float ProcessThrottle(float finalSpnt, int speed, int motorTemp, int inverterTemp, float voltage, uint32_t elapsedMs);
 void updateDataTimeStatus(dataMessage_t *dataMsg, int count, int maxDiff, TickType_t now);
 void sort4(int32_t v[4], uint8_t n);
 int calculateSpeed(dataMessage_t wheelSpeeds[4], int wheelCount);

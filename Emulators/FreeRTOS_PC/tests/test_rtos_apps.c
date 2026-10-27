@@ -14,10 +14,16 @@ static int32_t AppsRaw(int potIdx, float percent)
     return (int32_t)(potmin[potIdx] + (potmax[potIdx] - potmin[potIdx]) * percent / 100.0f);
 }
 
+// Temps pour qu'une nouvelle valeur traverse la chaine : une periode de TRVP, une de Main, et une marge
+#define CHAIN_DELAY_MS (2U * CONTROL_PERIOD_MS + 5U)
+
+// Nouvelles valeurs des APPS, envoyees tout de suite puis a chaque trame periodique
 static void SetApps(float percent1, float percent2)
 {
     EmuCan_SetValue(CAN_ID_APPS1, AppsRaw(0, percent1));
     EmuCan_SetValue(CAN_ID_APPS2, AppsRaw(1, percent2));
+    (void)EmuCan_SendNow(CAN_ID_APPS1, AppsRaw(0, percent1));
+    (void)EmuCan_SendNow(CAN_ID_APPS2, AppsRaw(1, percent2));
 }
 
 // Capteurs, roues et onduleur simules, APPS coherents a 40 %
@@ -85,8 +91,8 @@ static uint32_t TimeToTorque(uint32_t ms)
 static void TestApps_ShortImplausibility(void)
 {
     SetApps(30.0f, 70.0f);
-    EmuWaitMs(15); // le temps que les nouvelles trames traversent la chaine
-    int during = MaxTorqueDuring(35U);
+    EmuWaitMs(CHAIN_DELAY_MS); // le temps que les nouvelles valeurs traversent la chaine
+    int during = MaxTorqueDuring(50U - CHAIN_DELAY_MS);
     SetApps(40.0f, 40.0f);
     unsigned long back = (unsigned long)TimeToTorque(300U);
     vt_check("E-S1f", "T 11.8.8", (during <= 0) && (back <= 300UL),

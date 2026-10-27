@@ -21,8 +21,6 @@ int cruiseSpeed;
 float speedkp;
 int speedflt;
 float idleThrotLim;
-float regenRamp;
-float actualThrottleRamp;
 int bmslimhigh;
 int bmslimlow;
 int accelmax;
@@ -56,8 +54,8 @@ uint8_t PedalPosIdx = 0;
 int8_t PedalReq = 0; // positive is accel negative is decell
 
 int throtRampRpm;
-float throtRamp;
-float throtRampMax;
+float throtRampPerS;
+float throtRampMaxPerS;
 
 float motorTempMax;
 float inverterTempMax;
@@ -247,47 +245,29 @@ bool TemperatureDerate(int temp, int tempMax, float *finalSpnt)
 }
 
 /**
- * @brief Apply the throttle ramping parameters for ramping up and down.
+ * @brief Rampe de montee de la consigne, sur le temps reellement ecoule (R1) : la duree d'une montee ne
+ * depend plus du nombre d'appels. La descente est immediate. Jamais de consigne negative (D3).
  *
- * @param potnom Normalized throttle command in percent, range [-100.0, 100.0].
- * @return float Ramped throttle command in percent, range [-100.0, 100.0].
+ * @param potnom Demande en %, bornee a [throtmin, throtmax].
+ * @param rampPerS Pente de la montee, en %/s.
+ * @param elapsedMs Temps ecoule depuis l'appel precedent.
+ * @return float Consigne apres la rampe, en %.
  */
-float RampThrottle(float potnom)
+float RampThrottle(float potnom, float rampPerS, uint32_t elapsedMs)
 {
     // make sure potnom is within the boundaries of [throtmin, throtmax]
     potnom = MIN(potnom, throtmax);
     potnom = MAX(potnom, throtmin);
 
-    if (potnom >= throttleRamped) // higher throttle command than currently applied
+    if (potnom > throttleRamped)
     {
-        if (potnom > 0)
-        {
-            //                    //  current       target,  rate
-            throttleRamped = RAMPUP(throttleRamped, potnom, actualThrottleRamp);
-            potnom = throttleRamped;
-        }
-        else
-        {
-            throttleRamped = RAMPUP(throttleRamped, potnom, regenRamp);
-            potnom = throttleRamped;
-        }
+        float step = rampPerS * (float)elapsedMs / 1000.0f;
+        throttleRamped = MIN(throttleRamped + step, potnom);
     }
-    else //(potnom < throttleRamped) // lower throttle command than currently applied
+    else
     {
-        if (potnom >= 0)
-        {
-            throttleRamped = potnom; // No ramping from high throttle to low throttle
-        }
-        else
-        {
-            if (throttleRamped > 0)
-            {
-                throttleRamped = 0;
-            }
-            throttleRamped = RAMPDOWN(throttleRamped, potnom, regenRamp);
-            potnom = throttleRamped;
-        }
+        throttleRamped = potnom; // pas de rampe a la descente
     }
 
-    return potnom;
+    return throttleRamped;
 }
