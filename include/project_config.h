@@ -30,4 +30,12 @@
 #define APPS_FAULT_CONFIRM_MS 100U
 #define APPS_FAULT_RELEASE_PERCENT 5.0f
 
+// Delai de chaque donnee dans Main (S5, T2, decide le 27/10/2026, revisable ; a reprendre du DBC) :
+// au-dela, la donnee est perimee et le couple coupe. Avec les 200 ms de TRVP pour les APPS, la chaine
+// reste sous les 500 ms de T 11.9.4.
+#define THROTTLE_CMD_TIMEOUT_MS 100
+#define SPEED_TIMEOUT_MS 200
+#define TEMP_TIMEOUT_MS 500
+#define VOLTAGE_TIMEOUT_MS 500
+
 #endif // PROJECT_CONFIG_H

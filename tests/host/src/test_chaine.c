@@ -30,6 +30,7 @@ typedef struct
     float appsPercent;
     bool sendTemperatures;
     TickType_t temperatureTimestamp;
+    TickType_t voltageTimestamp;
 } ChainInputs_t;
 
 static void Setup(void)
@@ -65,7 +66,7 @@ static bool RunChain(ChainInputs_t in, float *torque)
     {
         Push(xMainQueue, motor_tempId, 40, in.temperatureTimestamp);
         Push(xMainQueue, inverter_tempId, 40, in.temperatureTimestamp);
-        Push(xMainQueue, voltageId, 350, in.temperatureTimestamp);
+        Push(xMainQueue, voltageId, 350, in.voltageTimestamp);
     }
 
     RunTaskOnce(TaskRawValuesProcessing, &sTrvpParams);
@@ -80,6 +81,21 @@ static bool RunChain(ChainInputs_t in, float *torque)
     return true;
 }
 
+// Ordre envoye par Main a l'IHM pour le voyant defaut, apres RunChain : -1 aucun, 0 eteint, 1 allume
+static int FaultLightOrder(void)
+{
+    IHMOrder_t order;
+    int state = -1;
+    while (xQueueReceive(xIHMQueue, &order, 0) == pdPASS)
+    {
+        if (order.order == FaultLight)
+        {
+            state = order.state ? 1 : 0;
+        }
+    }
+    return state;
+}
+
 int main(void)
 {
     vt_begin("Chaine de couple TRVP -> Main -> CanTx");
@@ -87,7 +103,7 @@ int main(void)
 
     // Precondition de tout le secteur : APPS a 40 % -> une consigne > 0 sort vers l'onduleur.
     // Quand le mode R2D existera (S3), ce test devra d'abord faire la sequence R2D.
-    bool sent = RunChain((ChainInputs_t){40.0f, true, T_NOW}, &torque);
+    bool sent = RunChain((ChainInputs_t){40.0f, true, T_NOW, T_NOW}, &torque);
     bool chainWorks = vt_check("B2a", "-", sent && (torque > 0.0f),
                                "APPS 40 %%, donnees fraiches -> consigne %s %.1f %% (attendu > 0)",
                                sent ? "envoyee" : "NON envoyee", torque);
@@ -96,19 +112,34 @@ int main(void)
     {
         vt_blocked("S5a", "T 11.9.4", "chaine sans couple (B2a) : coupure sur donnee perimee non verifiable");
         vt_blocked("S5c", "T 11.9.2.d", "chaine sans couple (B2a) : coupure sans temperature non verifiable");
+        vt_blocked("S5d", "-", "chaine sans couple (B2a) : voyant defaut non verifiable");
+        vt_blocked("S5e", "T 11.9.4", "chaine sans couple (B2a) : coupure sur temperature perimee non verifiable");
         vt_blocked("S3a", "EV 4.11.7", "chaine sans couple (B2a) : absence de R2D non verifiable");
         return vt_end();
     }
 
-    sent = RunChain((ChainInputs_t){40.0f, true, T_NOW - 2500U}, &torque);
+    sent = RunChain((ChainInputs_t){40.0f, true, T_NOW - 2500U, T_NOW - 2500U}, &torque);
     vt_check("S5a", "T 11.9.4", !sent || torque <= 0.0f,
-             "temperatures vieilles de 2500 ms (> 500 ms) -> consigne %.1f %% (attendu 0)", torque);
+             "temperatures et tension vieilles de 2500 ms (> 500 ms) -> consigne %.1f %% (attendu 0)", torque);
 
-    sent = RunChain((ChainInputs_t){40.0f, false, 0}, &torque);
+    // T1 : une temperature perdue suffit a couper le couple, meme si la tension est fraiche
+    sent = RunChain((ChainInputs_t){40.0f, true, T_NOW - 2500U, T_NOW}, &torque);
+    vt_check("S5e", "T 11.9.4", !sent || torque <= 0.0f,
+             "temperatures vieilles de 2500 ms, tension fraiche -> consigne %.1f %% (attendu 0, T1)", torque);
+
+    sent = RunChain((ChainInputs_t){40.0f, false, 0, 0}, &torque);
     vt_check("S5c", "T 11.9.2.d", !sent || torque <= 0.0f,
              "temperatures et tension jamais recues -> consigne %.1f %% (attendu 0)", torque);
+    int missingLight = FaultLightOrder();
+    (void)RunChain((ChainInputs_t){40.0f, true, T_NOW, T_NOW}, &torque);
+    int freshLight = FaultLightOrder();
+    vt_check("S5d", "-", (missingLight == 1) && (freshLight == -1),
+             "temperatures et tension jamais recues -> voyant defaut %s ; donnees fraiches -> %s (attendu allume ; "
+             "aucun ordre)",
+             (missingLight == 1) ? "allume" : ((missingLight == 0) ? "eteint" : "sans ordre"),
+             (freshLight == 1) ? "allume" : ((freshLight == 0) ? "eteint" : "aucun ordre"));
 
-    sent = RunChain((ChainInputs_t){40.0f, true, T_NOW}, &torque);
+    sent = RunChain((ChainInputs_t){40.0f, true, T_NOW, T_NOW}, &torque);
     vt_check("S3a", "EV 4.11.7", !sent || torque <= 0.0f,
              "aucune sequence R2D (frein + bouton) -> consigne %.1f %% (attendu 0)", torque);
 
