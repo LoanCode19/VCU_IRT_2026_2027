@@ -87,6 +87,44 @@ static void TestIntegration_AllTasksCreated(void)
              uxTestCreatedTaskCount(), missingCount, missingCount ? missing : " aucune");
 }
 
+static int PriorityOf(TaskFunction_t task)
+{
+    for (unsigned i = 0; i < uxTestCreatedTaskCount(); i++)
+    {
+        if (pxTestCreatedTask(i)->function == task)
+        {
+            return (int)pxTestCreatedTask(i)->priority;
+        }
+    }
+    return -1;
+}
+
+// Les priorites dont depend le code : TaskCanRx au-dessus de toutes les taches qui lisent ses queues (elle jette la
+// plus ancienne valeur d'une queue pleine sans section critique), TaskDigitalSignals au-dessus des taches qui lui
+// ecrivent (sa queue ne se remplit pas)
+static void TestIntegration_Priorities(void)
+{
+    BootMainApp();
+    int canRx = PriorityOf(TaskCanRx);
+    int digital = PriorityOf(TaskDigitalSignals);
+    const TaskFunction_t readers[] = {TaskRawValuesProcessing, TaskMain, TaskCoolingSystem};
+    const TaskFunction_t writers[] = {TaskIHM, TaskCoolingSystem};
+    bool ok = (canRx >= 0) && (digital >= 0);
+    for (unsigned i = 0; i < sizeof(readers) / sizeof(readers[0]); i++)
+    {
+        ok = ok && (canRx > PriorityOf(readers[i]));
+    }
+    for (unsigned i = 0; i < sizeof(writers) / sizeof(writers[0]); i++)
+    {
+        ok = ok && (digital > PriorityOf(writers[i]));
+    }
+    vt_check("B8b", "-", ok,
+             "priorites : TaskCanRx %d (TRVP %d, Main %d, refroidissement %d) ; TaskDigitalSignals %d (IHM %d) "
+             "(attendu TaskCanRx au-dessus de ses lecteurs, TaskDigitalSignals au-dessus de ses ecrivains)",
+             canRx, PriorityOf(TaskRawValuesProcessing), PriorityOf(TaskMain), PriorityOf(TaskCoolingSystem), digital,
+             PriorityOf(TaskIHM));
+}
+
 int main(void)
 {
     volatile int stackTop = 0;
@@ -97,6 +135,7 @@ int main(void)
     TestIntegration_Queues();
     TestIntegration_TaskParameters();
     TestIntegration_AllTasksCreated();
+    TestIntegration_Priorities();
 
     return vt_end();
 }
