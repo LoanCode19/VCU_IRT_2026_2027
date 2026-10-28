@@ -283,6 +283,23 @@ static void TestCanRx_FrameChecks(void)
              (unsigned long)CAN_ID_DTI_TEMPERATURES, (unsigned long)CAN_ID_DTI_ERPM_VOLTAGE, mainOk ? "oui" : "non",
              coolingOk ? "oui" : "non", negativeOk ? "oui" : "non");
 
+    // Une demi-unite negative s'arrondit aussi en s'eloignant de zero : -45,5 -> -46, comme 45,5 -> 46
+    Setup(100U);
+    static const uint8_t frozenMotor[8] = {0x00, 0x00, 0xFE, 0x39, 0x00, 0xFF, 0xFF, 0xFF}; // moteur a -45,5 degres
+    (void)PushFrame(CAN_ID_DTI_TEMPERATURES, 8U, frozenMotor);
+    RunCanRx();
+    unsigned nFrozen = Drain(xMainQueue, toMain);
+    int32_t frozen = 0;
+    for (unsigned i = 0; i < nFrozen; i++)
+    {
+        if (toMain[i].id == motor_tempId)
+        {
+            frozen = toMain[i].data;
+        }
+    }
+    vt_check("B6i", "T 11.9.2.d", frozen == -46,
+             "trame DTI, moteur FE 39 (-45,5 degres) -> %ld (attendu -46 : la moitie s'eloigne de zero)", (long)frozen);
+
     // Trame etendue (29 bits) qui porte le meme numero qu'APPS1 en standard : ce n'est pas APPS1
     Setup(100U);
     static const uint8_t value[8] = {0x00, 0x00, 0x07, 0xD0};
@@ -351,6 +368,45 @@ static void TestCanRx_Overload(void)
     unsigned long lost = (unsigned long)(canRxStats.lostTrvp - before.lostTrvp);
     vt_check("R2b", "T 11.9.2.d", lost == 3UL,
              "queue TRVP pleine, 3 nouvelles valeurs APPS1 -> %lu perte(s) comptee(s) (attendu 3)", lost);
+
+    // Interruption plus rapide que TaskCanRx : la queue de reception est pleine quand une trame arrive. La plus
+    // ancienne laisse sa place et la perte est comptee (T13).
+    Setup(100U);
+    before = canRxStats;
+    unsigned stored = 0U;
+    while (PushValue(CAN_ID_APPS1, (int32_t)(1000U + stored)))
+    {
+        stored++;
+    }
+    CanFrame_t newest = {.id = CAN_ID_APPS1, .ide = 0U, .dlc = 4U, .data = {0x00, 0x00, 0x0F, 0xA0}, .rxTick = 100U};
+    CanRx_OnFrameFromISR(&newest, NULL); // 4000
+    CanFrame_t frame;
+    bool oldestGone = (xQueuePeek(xCanRxQueue, &frame, 0) == pdPASS) && (frame.data[2] != 0x03U || frame.data[3] != 0xE8U);
+    RunCanRx();
+    bool newestKept = HasMessage(xTRVPQueue, apps1Id, 4000);
+    unsigned long full = (unsigned long)(canRxStats.rxQueueFull - before.rxQueueFull);
+    vt_check("R2c", "T 11.9.2.d", oldestGone && newestKept && (full >= 1UL),
+             "queue de reception pleine (%u trames), une trame de plus -> plus ancienne %s, nouvelle %s, rxQueueFull +%lu "
+             "(attendu jetee, gardee, au moins 1)",
+             stored, oldestGone ? "jetee" : "gardee", newestKept ? "gardee" : "perdue", full);
+}
+
+// C1 : une interruption peut arriver avant que MainApp() ait cree les queues. La trame est ignoree, sans planter.
+static void TestCanRx_BeforeQueues(void)
+{
+    Setup(100U);
+    CanRxStats_t before = canRxStats;
+    QueueHandle_t saved = xCanRxQueue;
+    xCanRxQueue = NULL;
+    CanFrame_t frame = {.id = CAN_ID_APPS1, .ide = 0U, .dlc = 4U, .data = {0x00, 0x00, 0x07, 0xD0}, .rxTick = 100U};
+    CanRx_OnFrameFromISR(&frame, NULL);
+    xCanRxQueue = saved;
+    unsigned long full = (unsigned long)(canRxStats.rxQueueFull - before.rxQueueFull);
+    // Sur la carte, une queue nulle passee a FreeRTOS bloque dans configASSERT : la trame doit etre ignoree avant
+    vt_check("C1g", "-", (uxTestQueueCount(xCanRxQueue) == 0U) && (full == 0UL),
+             "trame recue avant la creation des queues -> %u trame(s) en attente, rxQueueFull +%lu (attendu 0 et 0 : "
+             "ignoree avant tout appel a FreeRTOS)",
+             (unsigned)uxTestQueueCount(xCanRxQueue), full);
 }
 
 int main(void)
@@ -363,6 +419,7 @@ int main(void)
     TestCanRx_FrameChecks();
     TestCanRx_Table();
     TestCanRx_Overload();
+    TestCanRx_BeforeQueues();
 
     return vt_end();
 }
