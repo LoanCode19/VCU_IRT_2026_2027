@@ -48,6 +48,22 @@ CanFrame_t Dti_EncodeDriveEnable(bool enable)
     return frame;
 }
 
+// Trame de l'onduleur pour un message de Main. false : message que la tache n'attend pas (ignore).
+static bool EncodeCommand(const dataMessage_t *msg, CanFrame_t *frame)
+{
+    switch (msg->id)
+    {
+    case inverterTorqueCmdId:
+        *frame = Dti_EncodeRelativeCurrent(FP_TOFLOAT(msg->data));
+        return true;
+    case driveEnableCmdId:
+        *frame = Dti_EncodeDriveEnable(msg->data != 0);
+        return true;
+    default:
+        return false;
+    }
+}
+
 void TaskCanTx(void *pvParameters)
 {
     CanTxParam_t *params = (CanTxParam_t *)pvParameters;
@@ -57,31 +73,12 @@ void TaskCanTx(void *pvParameters)
     while (1)
     {
         dataMessage_t msg = {0};
-        if (xQueueReceive(*xCanTxQueue, &msg, CAN_TX_TIMEOUT) == pdPASS)
+        CanFrame_t frame;
+        if ((xQueueReceive(*xCanTxQueue, &msg, CAN_TX_TIMEOUT) == pdPASS) && EncodeCommand(&msg, &frame))
         {
-            switch (msg.id)
+            if (!CanTx_Send(&frame))
             {
-            case inverterTorqueCmdId:
-            {
-                float throttle = FP_TOFLOAT(msg.data);
-                CanFrame_t frame = Dti_EncodeRelativeCurrent(throttle);
-                if (!CanTx_Send(&frame))
-                {
-                    canTxErrors++; // boites d'emission pleines : la consigne suivante partira
-                }
-                break;
-            }
-            case driveEnableCmdId:
-            {
-                CanFrame_t frame = Dti_EncodeDriveEnable(msg.data != 0);
-                if (!CanTx_Send(&frame))
-                {
-                    canTxErrors++;
-                }
-                break;
-            }
-            default: // message que la tache n'attend pas : ignore
-                break;
+                canTxErrors++; // boites d'emission pleines : la trame suivante partira
             }
         }
 

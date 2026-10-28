@@ -6,224 +6,157 @@
 #include "queue.h"
 
 #include "structs.h"
+#include "project_config.h"
 #include "queueHandles.h"
+#include "my_math.h"
 #include "utils.h"
 #include "TaskCoolingSystem.h"
 
-#ifndef COOLING_RX_TIMEOUT_MS
-#define COOLING_RX_TIMEOUT_MS 100U
-#endif
-
-#ifndef COOLING_TX_TIMEOUT_MS
-#define COOLING_TX_TIMEOUT_MS 5U
-#endif
-
-#ifndef COOLING_TEMP_TIMEOUT_MS
-#define COOLING_TEMP_TIMEOUT_MS 500U
-#endif
-
-#ifndef COOLING_PUMP_ON_TEMP_C
-#define COOLING_PUMP_ON_TEMP_C 50
-#endif
-
-#ifndef COOLING_PUMP_OFF_TEMP_C
-#define COOLING_PUMP_OFF_TEMP_C 45
-#endif
-
-#ifndef COOLING_FANS_ON_TEMP_C
-#define COOLING_FANS_ON_TEMP_C 55
-#endif
-
-#ifndef COOLING_FANS_OFF_TEMP_C
-#define COOLING_FANS_OFF_TEMP_C 50
-#endif
-
 typedef struct
 {
-	dataMessage_t motorTemp;
-	dataMessage_t inverterTemp;
-	dataMessage_t tsActive; // trame d'etat du vehicule (T19)
-	bool pumpEnabled;
-	bool fansEnabled;
-	bool hasPublishedOrders;
-	bool lastPublishedPumpEnabled;
-	bool lastPublishedFansEnabled;
+    dataMessage_t motorTemp;
+    dataMessage_t inverterTemp;
+    dataMessage_t tsActive; // trame d'etat du vehicule (T19)
+    bool pumpByTemp;        // pompe demandee par les temperatures (avec hysteresis)
+    bool fansByTemp;        // ventilateurs demandes par les temperatures (avec hysteresis)
+    bool published;         // les premiers ordres sont partis
+    bool pumpOn;            // derniers ordres envoyes a TaskDigitalSignals
+    bool fansOn;
 } CoolingState_t;
 
-static bool sPumpEnabled = false;
-static bool sFansEnabled = false;
-
-static bool ApplyOnOffHysteresis(bool currentlyEnabled, int32_t measuredTemp, int32_t onThreshold, int32_t offThreshold)
+// Case de CoolingState_t ou ranger un message recu, ou NULL si la tache ne l'attend pas
+static dataMessage_t *CoolingSlot(CoolingState_t *state, MessageIds id)
 {
-	if (currentlyEnabled)
-	{
-		return (measuredTemp > offThreshold);
-	}
-
-	return (measuredTemp >= onThreshold);
+    switch (id)
+    {
+    case motor_tempId:
+        return &state->motorTemp;
+    case inverter_tempId:
+        return &state->inverterTemp;
+    case tsActiveId:
+        return &state->tsActive;
+    default: // message que la tache n'attend pas : ignore
+        return NULL;
+    }
 }
 
-static void ToggleCoolingPumps(bool state)
+static bool Hysteresis(bool on, int32_t temp, int32_t onTemp, int32_t offTemp)
 {
-	sPumpEnabled = state;
-}
-
-static void ToggleCoolingFans(bool state)
-{
-	sFansEnabled = state;
-}
-
-static void PublishCoolingOrder(Order_t order, bool state)
-{
-	DigitalOrder_t outputOrder = {0};
-
-	if (xDSQueue == NULL)
-	{
-		return;
-	}
-
-	outputOrder.order = order;
-	outputOrder.state = state;
-	(void)xQueueSend(xDSQueue, &outputOrder, pdMS_TO_TICKS(COOLING_TX_TIMEOUT_MS));
-}
-
-static void PublishCoolingOrdersIfChanged(CoolingState_t *state, bool pumpEnabled, bool fansEnabled)
-{
-	bool publishPump = (!state->hasPublishedOrders) ||
-					   (pumpEnabled != state->lastPublishedPumpEnabled);
-
-	bool publishFans = (!state->hasPublishedOrders) ||
-					   (fansEnabled != state->lastPublishedFansEnabled);
-
-	if (publishPump)
-	{
-		PublishCoolingOrder(CoolingPump, pumpEnabled);
-	}
-
-	if (publishFans)
-	{
-		PublishCoolingOrder(CoolingFans, fansEnabled);
-	}
-
-	state->hasPublishedOrders = true;
-	state->lastPublishedPumpEnabled = pumpEnabled;
-	state->lastPublishedFansEnabled = fansEnabled;
-}
-
-static void RefreshTemperatureStatuses(CoolingState_t *state, TickType_t now)
-{
-	updateDataTimeStatus(&state->motorTemp, 1, COOLING_TEMP_TIMEOUT_MS, now);
-	updateDataTimeStatus(&state->inverterTemp, 1, COOLING_TEMP_TIMEOUT_MS, now);
-	updateDataTimeStatus(&state->tsActive, 1, VEHICLE_STATE_TIMEOUT_MS, now);
+    return on ? (temp > offTemp) : (temp >= onTemp);
 }
 
 // S12 (T9, decide le 27/10/2026, revisable) : TS actif -> pompe et ventilateurs ON, quelle que soit la temperature
 // (test de pluie, IN 9.2.1). Signal TS perdu -> ON, comme une temperature perdue. Jamais recu : rien de force.
 static bool TsForcesCooling(const CoolingState_t *state)
 {
-	return (state->tsActive.timeStatus == STATUS_TIMEOUT) ||
-	       ((state->tsActive.timeStatus == STATUS_TIME_OK) && (state->tsActive.data != 0));
+    return (state->tsActive.timeStatus == STATUS_TIMEOUT) ||
+           ((state->tsActive.timeStatus == STATUS_TIME_OK) && (state->tsActive.data != 0));
 }
 
-static void EvaluateCooling(CoolingState_t *state)
+// Demande des temperatures : la plus chaude des temperatures valides, avec hysteresis. Aucune valide : ON si l'une
+// d'elles est perdue (delai depasse), OFF si aucune n'est encore arrivee.
+static void EvaluateTemperatures(CoolingState_t *state)
 {
-	bool motorValid = (state->motorTemp.timeStatus == STATUS_TIME_OK);
-	bool inverterValid = (state->inverterTemp.timeStatus == STATUS_TIME_OK);
-	int32_t hottestTemp = 0;
+    bool motorValid = (state->motorTemp.timeStatus == STATUS_TIME_OK);
+    bool inverterValid = (state->inverterTemp.timeStatus == STATUS_TIME_OK);
 
-	if ((!motorValid) && (!inverterValid))
-	{
-		bool hasTimedOut = (state->motorTemp.timeStatus == STATUS_TIMEOUT) ||
-						   (state->inverterTemp.timeStatus == STATUS_TIMEOUT);
+    if (!motorValid && !inverterValid)
+    {
+        bool lost = (state->motorTemp.timeStatus == STATUS_TIMEOUT) ||
+                    (state->inverterTemp.timeStatus == STATUS_TIMEOUT);
+        state->pumpByTemp = lost;
+        state->fansByTemp = lost;
+        return;
+    }
 
-		state->pumpEnabled = hasTimedOut;
-		state->fansEnabled = hasTimedOut;
+    int32_t hottest;
+    if (motorValid && inverterValid)
+    {
+        hottest = MAX(state->motorTemp.data, state->inverterTemp.data);
+    }
+    else
+    {
+        hottest = motorValid ? state->motorTemp.data : state->inverterTemp.data;
+    }
+    state->pumpByTemp = Hysteresis(state->pumpByTemp, hottest, COOLING_PUMP_ON_TEMP_C, COOLING_PUMP_OFF_TEMP_C);
+    state->fansByTemp = Hysteresis(state->fansByTemp, hottest, COOLING_FANS_ON_TEMP_C, COOLING_FANS_OFF_TEMP_C);
+}
 
-		ToggleCoolingPumps(state->pumpEnabled || TsForcesCooling(state));
-		ToggleCoolingFans(state->fansEnabled || TsForcesCooling(state));
-		return;
-	}
+static void PublishOrder(Order_t order, bool on)
+{
+    if (xDSQueue != NULL)
+    {
+        DigitalOrder_t outputOrder = {.order = order, .state = on};
+        (void)xQueueSend(xDSQueue, &outputOrder, DS_SEND_TIMEOUT);
+    }
+}
 
-	hottestTemp = motorValid ? state->motorTemp.data : state->inverterTemp.data;
-	if (inverterValid && ((!motorValid) || (state->inverterTemp.data > hottestTemp)))
-	{
-		hottestTemp = state->inverterTemp.data;
-	}
+// Envoie a TaskDigitalSignals les ordres qui changent, et les deux la premiere fois
+static void PublishOrders(CoolingState_t *state)
+{
+    bool tsForces = TsForcesCooling(state);
+    bool pumpOn = state->pumpByTemp || tsForces;
+    bool fansOn = state->fansByTemp || tsForces;
 
-	state->pumpEnabled = ApplyOnOffHysteresis(
-		state->pumpEnabled,
-		hottestTemp,
-		COOLING_PUMP_ON_TEMP_C,
-		COOLING_PUMP_OFF_TEMP_C);
-
-	state->fansEnabled = ApplyOnOffHysteresis(
-		state->fansEnabled,
-		hottestTemp,
-		COOLING_FANS_ON_TEMP_C,
-		COOLING_FANS_OFF_TEMP_C);
-
-	ToggleCoolingPumps(state->pumpEnabled || TsForcesCooling(state));
-	ToggleCoolingFans(state->fansEnabled || TsForcesCooling(state));
+    if (!state->published || (pumpOn != state->pumpOn))
+    {
+        PublishOrder(CoolingPump, pumpOn);
+    }
+    if (!state->published || (fansOn != state->fansOn))
+    {
+        PublishOrder(CoolingFans, fansOn);
+    }
+    state->published = true;
+    state->pumpOn = pumpOn;
+    state->fansOn = fansOn;
 }
 
 void TaskCoolingSystem(void *pvParameters)
 {
-	CoolingParams_t *params = (CoolingParams_t *)pvParameters;
-	QueueHandle_t *xTCSQueue = params->xCoolingQueue;
-	TaskId taskId = params->taskId;
-	dataMessage_t incomingMsg = {0};
-	CoolingState_t state = {0};
+    CoolingParams_t *params = (CoolingParams_t *)pvParameters;
+    QueueHandle_t *xTCSQueue = params->xCoolingQueue;
+    TaskId taskId = params->taskId;
 
-	state.motorTemp.id = motor_tempId;
-	state.inverterTemp.id = inverter_tempId;
-	state.motorTemp.timeStatus = STATUS_NOT_READY;
-	state.inverterTemp.timeStatus = STATUS_NOT_READY;
-	state.tsActive.id = tsActiveId;
-	state.tsActive.timeStatus = STATUS_NOT_READY;
+    CoolingState_t state = {0};
+    state.motorTemp.id = motor_tempId;
+    state.inverterTemp.id = inverter_tempId;
+    state.tsActive.id = tsActiveId;
+    state.motorTemp.timeStatus = STATUS_NOT_READY;
+    state.inverterTemp.timeStatus = STATUS_NOT_READY;
+    state.tsActive.timeStatus = STATUS_NOT_READY;
 
-	for (;;)
-	{
-		bool hasNewMeasurement = false;
-		DataTimeStatus_t previousMotorStatus = state.motorTemp.timeStatus;
-		DataTimeStatus_t previousInverterStatus = state.inverterTemp.timeStatus;
-		DataTimeStatus_t previousTsStatus = state.tsActive.timeStatus;
+    for (;;)
+    {
+        DataTimeStatus_t motorBefore = state.motorTemp.timeStatus;
+        DataTimeStatus_t inverterBefore = state.inverterTemp.timeStatus;
+        DataTimeStatus_t tsBefore = state.tsActive.timeStatus;
+        bool received = false;
 
-		if (xQueueReceive(*xTCSQueue, &incomingMsg, pdMS_TO_TICKS(COOLING_RX_TIMEOUT_MS)) == pdPASS)
-		{
-			if (incomingMsg.id == motor_tempId)
-			{
-				state.motorTemp = incomingMsg;
-				state.motorTemp.timeStatus = STATUS_TIME_OK;
-				hasNewMeasurement = true;
-			}
-			else if (incomingMsg.id == inverter_tempId)
-			{
-				state.inverterTemp = incomingMsg;
-				state.inverterTemp.timeStatus = STATUS_TIME_OK;
-				hasNewMeasurement = true;
-			}
-			else if (incomingMsg.id == tsActiveId)
-			{
-				state.tsActive = incomingMsg;
-				state.tsActive.timeStatus = STATUS_TIME_OK;
-				hasNewMeasurement = true;
-			}
-		}
+        dataMessage_t msg;
+        if (xQueueReceive(*xTCSQueue, &msg, COOLING_TIMEOUT) == pdPASS)
+        {
+            dataMessage_t *slot = CoolingSlot(&state, msg.id);
+            if (slot != NULL)
+            {
+                msg.timeStatus = STATUS_TIME_OK;
+                *slot = msg;
+                received = true;
+            }
+        }
 
-		RefreshTemperatureStatuses(&state, xTaskGetTickCount());
+        TickType_t now = xTaskGetTickCount();
+        updateDataTimeStatus(&state.motorTemp, 1, TEMP_TIMEOUT_MS, now);
+        updateDataTimeStatus(&state.inverterTemp, 1, TEMP_TIMEOUT_MS, now);
+        updateDataTimeStatus(&state.tsActive, 1, VEHICLE_STATE_TIMEOUT_MS, now);
 
-		if (hasNewMeasurement ||
-			(previousMotorStatus != state.motorTemp.timeStatus) ||
-			(previousInverterStatus != state.inverterTemp.timeStatus) ||
-			(previousTsStatus != state.tsActive.timeStatus))
-		{
-			EvaluateCooling(&state);
-			PublishCoolingOrdersIfChanged(
-				&state,
-				sPumpEnabled,
-				sFansEnabled);
-		}
+        // Nouvelle mesure, ou donnee qui vient d'etre perdue : les ordres sont recalcules
+        if (received || (motorBefore != state.motorTemp.timeStatus) ||
+            (inverterBefore != state.inverterTemp.timeStatus) || (tsBefore != state.tsActive.timeStatus))
+        {
+            EvaluateTemperatures(&state);
+            PublishOrders(&state);
+        }
 
-		wdgFeedNow(taskId);
-	}
+        wdgFeedNow(taskId);
+    }
 }

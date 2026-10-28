@@ -8,6 +8,9 @@
 #define WDG_PERIOD pdMS_TO_TICKS(100)
 #define IHM_TIMEOUT pdMS_TO_TICKS(100)
 #define DS_TIMEOUT pdMS_TO_TICKS(100)
+#define COOLING_TIMEOUT pdMS_TO_TICKS(100)
+// Attente maximale pour deposer un ordre dans la queue de TaskDigitalSignals (IHM, refroidissement)
+#define DS_SEND_TIMEOUT pdMS_TO_TICKS(5)
 // Attente maximale de CanRx et CanTx : elles nourrissent le watchdog au moins a ce rythme,
 // meme sans trafic. La perte du bus est geree par les timeouts des donnees, pas par le watchdog.
 #define CAN_RX_TIMEOUT pdMS_TO_TICKS(100)
@@ -72,6 +75,13 @@
 #define WHEEL_RADIUS_M 0.20f      // hypothese : rayon sous charge, a mesurer
 // Ecart maximal entre deux roues pour les moyenner (T18, decide le 27/10/2026, revisable ; a regler en roulant)
 #define WHEEL_MAX_DIFF_MMS 1000
+
+// Refroidissement (valeurs d'origine, a regler) : la plus chaude des temperatures moteur et onduleur, en degres,
+// avec hysteresis. TS actif ou signal TS perdu : tout ON (S12, T9).
+#define COOLING_PUMP_ON_TEMP_C 50
+#define COOLING_PUMP_OFF_TEMP_C 45
+#define COOLING_FANS_ON_TEMP_C 55
+#define COOLING_FANS_OFF_TEMP_C 50
 
 // Traces des taches de la chaine de couple (TRVP, Main) : leur etat une fois par seconde, jamais a chaque
 // passage (T17, decide le 27/10/2026, revisable). La console SWV de la carte ne suit pas 100 passages par
