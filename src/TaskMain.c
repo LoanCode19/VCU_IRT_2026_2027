@@ -14,54 +14,98 @@
 #include "my_fp.h"
 #include "vcuState.h"
 
-void PrintMainState(const MainState_t *mainState, VcuState_t r2dState, float torqueCmd);
+static void PrintMainState(const MainState_t *mainState, VcuState_t r2dState, float torqueCmd);
 
 // Consignes perdues parce que la queue de CanTx etait pleine (lisible au debogueur)
 static uint32_t canTxSendFailures = 0;
 
+// Case de MainState_t ou ranger un message recu, ou NULL si Main ne l'attend pas
+static dataMessage_t *MainSlot(MainState_t *state, MessageIds id)
+{
+    switch (id)
+    {
+    case motor_tempId:
+        return &state->motorTemp;
+    case inverter_tempId:
+        return &state->inverterTemp;
+    case voltageId:
+        return &state->Voltage;
+    case calculatedSpeedId:
+        return &state->speed;
+    case processedThrottleId:
+        return &state->ThrottleCommand;
+    case tsActiveId:
+        return &state->tsActive;
+    case sdcClosedId:
+        return &state->sdcClosed;
+    case brakePressedId:
+        return &state->brake;
+    case r2dSwitchId:
+        return &state->r2dSwitch;
+    case appsFaultId:
+        return &state->appsFault;
+    default: // message que la tache n'attend pas : ignore
+        return NULL;
+    }
+}
+
 // S5 (T2) : met a jour l'etat de chaque donnee selon son delai. true si toutes sont fraiches.
 static bool MainInputsValid(MainState_t *state, TickType_t now)
 {
-    updateDataTimeStatus(&state->ThrottleCommand, 1, THROTTLE_CMD_TIMEOUT_MS, now);
-    updateDataTimeStatus(&state->speed, 1, SPEED_TIMEOUT_MS, now);
-    updateDataTimeStatus(&state->motorTemp, 1, TEMP_TIMEOUT_MS, now);
-    updateDataTimeStatus(&state->inverterTemp, 1, TEMP_TIMEOUT_MS, now);
-    updateDataTimeStatus(&state->Voltage, 1, VOLTAGE_TIMEOUT_MS, now);
-    return (state->ThrottleCommand.timeStatus == STATUS_TIME_OK) && (state->speed.timeStatus == STATUS_TIME_OK) &&
-           (state->motorTemp.timeStatus == STATUS_TIME_OK) && (state->inverterTemp.timeStatus == STATUS_TIME_OK) &&
-           (state->Voltage.timeStatus == STATUS_TIME_OK);
+    struct
+    {
+        dataMessage_t *data;
+        int timeoutMs;
+    } inputs[] = {
+        {&state->ThrottleCommand, THROTTLE_CMD_TIMEOUT_MS},
+        {&state->speed, SPEED_TIMEOUT_MS},
+        {&state->motorTemp, TEMP_TIMEOUT_MS},
+        {&state->inverterTemp, TEMP_TIMEOUT_MS},
+        {&state->Voltage, VOLTAGE_TIMEOUT_MS},
+    };
+    bool valid = true;
+    for (unsigned i = 0; i < sizeof(inputs) / sizeof(inputs[0]); i++)
+    {
+        valid = dataFresh(inputs[i].data, inputs[i].timeoutMs, now) && valid; // chaque donnee est mise a jour
+    }
+    return valid;
 }
 
 // T19 : met a jour l'etat des quatre signaux de la trame d'etat du vehicule. true s'ils sont tous arrives a temps.
 static bool VehicleStateFresh(MainState_t *state, TickType_t now)
 {
-    dataMessage_t *signals[4] = {&state->tsActive, &state->sdcClosed, &state->brake, &state->r2dSwitch};
+    dataMessage_t *signals[] = {&state->tsActive, &state->sdcClosed, &state->brake, &state->r2dSwitch};
     bool fresh = true;
-    for (unsigned i = 0; i < 4U; i++)
+    for (unsigned i = 0; i < sizeof(signals) / sizeof(signals[0]); i++)
     {
-        updateDataTimeStatus(signals[i], 1, VEHICLE_STATE_TIMEOUT_MS, now);
-        fresh = fresh && (signals[i]->timeStatus == STATUS_TIME_OK);
+        fresh = dataFresh(signals[i], VEHICLE_STATE_TIMEOUT_MS, now) && fresh; // chaque signal est mis a jour
     }
     return fresh;
 }
 
+// Envoie un ordre a l'IHM quand l'etat voulu change. *sent : dernier etat envoye. Queue pleine : l'ordre repart a la
+// periode suivante.
+static void SendIhmOrderOnChange(QueueHandle_t ihmQueue, Order_t order, bool wanted, bool *sent)
+{
+    if (wanted != *sent)
+    {
+        IHMOrder_t ihmOrder = {.order = order, .state = wanted};
+        if (xQueueSend(ihmQueue, &ihmOrder, 0) == pdPASS)
+        {
+            *sent = wanted;
+        }
+    }
+}
+
 void TaskMain(void *pvParameters)
 {
-    MainState_t mainState = {0};
-    bool faultLightOn = false; // dernier ordre FaultLight envoye a l'IHM
-    bool buzzerOn = false;     // dernier ordre R2Dbuzzer envoye a l'IHM
-    VcuStateMachine_t r2d;     // Ready-to-Drive (S3, T8)
-    VcuStateInit(&r2d);
-    float torqueCmd = 0.0f;    // derniere consigne envoyee, pour les traces
-
-    TickType_t lastTrace = xTaskGetTickCount();
-
     MainParams_t *params = (MainParams_t *)pvParameters;
     QueueHandle_t *xMainQueue = params->xMainQueue;
     QueueHandle_t *xIHMQueue = params->xIHMQueue;
     QueueHandle_t *xCanTxQueue = params->xCanTxQueue;
     TaskId taskId = params->taskId;
 
+    MainState_t mainState = {0};
     mainState.inverterTemp.timeStatus = STATUS_NOT_READY;
     mainState.motorTemp.timeStatus = STATUS_NOT_READY;
     mainState.Voltage.timeStatus = STATUS_NOT_READY;
@@ -72,6 +116,12 @@ void TaskMain(void *pvParameters)
     mainState.brake.timeStatus = STATUS_NOT_READY;
     mainState.r2dSwitch.timeStatus = STATUS_NOT_READY;
 
+    VcuStateMachine_t r2d; // Ready-to-Drive (S3, T8)
+    VcuStateInit(&r2d);
+    bool faultLightOn = false; // dernier ordre FaultLight envoye a l'IHM
+    bool buzzerOn = false;     // dernier ordre R2Dbuzzer envoye a l'IHM
+    TickType_t lastTrace = xTaskGetTickCount();
+
     // R1 (T3) : une passe toutes les CONTROL_PERIOD_MS, quel que soit le trafic CAN. La premiere passe
     // compte pour une periode : la rampe avance des le premier passage.
     TickType_t lastWake = xTaskGetTickCount();
@@ -81,43 +131,13 @@ void TaskMain(void *pvParameters)
     {
         TickType_t now = xTaskGetTickCount();
         dataMessage_t msg = {0};
-        while ((xQueueReceive(*xMainQueue, &msg, pdMS_TO_TICKS(0))) == pdPASS)
+        while (xQueueReceive(*xMainQueue, &msg, 0) == pdPASS)
         {
-            msg.timeStatus = STATUS_TIME_OK;
-            switch (msg.id)
+            dataMessage_t *slot = MainSlot(&mainState, msg.id);
+            if (slot != NULL)
             {
-            case motor_tempId: // motor temp
-                mainState.motorTemp = msg;
-                break;
-            case inverter_tempId: // inverter temp
-                mainState.inverterTemp = msg;
-                break;
-            case voltageId: // voltage message
-                mainState.Voltage = msg;
-                break;
-            case calculatedSpeedId: // calculated speed
-                mainState.speed = msg;
-                break;
-            case processedThrottleId: // processed throttle value
-                mainState.ThrottleCommand = msg;
-                break;
-            case tsActiveId:
-                mainState.tsActive = msg;
-                break;
-            case sdcClosedId:
-                mainState.sdcClosed = msg;
-                break;
-            case brakePressedId:
-                mainState.brake = msg;
-                break;
-            case r2dSwitchId:
-                mainState.r2dSwitch = msg;
-                break;
-            case appsFaultId:
-                mainState.appsFault = msg;
-                break;
-            default: // message que la tache n'attend pas : ignore
-                break;
+                msg.timeStatus = STATUS_TIME_OK;
+                *slot = msg;
             }
         }
 
@@ -133,25 +153,8 @@ void TaskMain(void *pvParameters)
         // R2D ou donnee perimee, la demande passe a 0 dans le calcul : la rampe repartira de 0.
         bool inputsValid = MainInputsValid(&mainState, now);
         bool appsFault = (mainState.appsFault.timeStatus == STATUS_TIME_OK) && (mainState.appsFault.data != 0);
-        bool fault = !inputsValid || !vehicle.fresh || appsFault;
-        if (fault != faultLightOn)
-        {
-            IHMOrder_t faultOrder = {.order = FaultLight, .state = fault};
-            if (xQueueSend(*xIHMQueue, &faultOrder, 0) == pdPASS)
-            {
-                faultLightOn = fault;
-            }
-        }
-
-        // Son R2D (EV 4.12.1) : un ordre a l'IHM a chaque changement
-        if (r2dOut.buzzerOn != buzzerOn)
-        {
-            IHMOrder_t buzzerOrder = {.order = R2Dbuzzer, .state = r2dOut.buzzerOn};
-            if (xQueueSend(*xIHMQueue, &buzzerOrder, 0) == pdPASS)
-            {
-                buzzerOn = r2dOut.buzzerOn;
-            }
-        }
+        SendIhmOrderOnChange(*xIHMQueue, FaultLight, !inputsValid || !vehicle.fresh || appsFault, &faultLightOn);
+        SendIhmOrderOnChange(*xIHMQueue, R2Dbuzzer, r2dOut.buzzerOn, &buzzerOn); // son R2D (EV 4.12.1)
 
         // Une consigne a chaque periode, meme sans message (R1). La rampe avance du temps reellement ecoule.
         bool torqueAllowed = inputsValid && r2dOut.torqueAllowed;
@@ -165,29 +168,16 @@ void TaskMain(void *pvParameters)
         {
             throttle = 0.0f;
         }
-        dataMessage_t throttleMsg = {
-            .id = inverterTorqueCmdId,    // Throttle command message ID
-            .data = FP_FROMFLT(throttle), // Convert to percentage and scale
-            .timestamp = now};
-
-        if (xQueueSend(*xCanTxQueue, &throttleMsg, 0) != pdPASS)
-        {
-            canTxSendFailures++; // queue pleine : consigne perdue, mais Main continue (R3)
-        }
-        torqueCmd = throttle;
-
+        // Queue de CanTx pleine : la consigne est perdue et comptee, mais Main continue (R3)
+        SendDataMessage(*xCanTxQueue, inverterTorqueCmdId, FP_FROMFLT(throttle), now, &canTxSendFailures);
         // "Drive enable" du DTI a chaque periode (T20) : deuxieme barriere, dans l'onduleur
-        dataMessage_t enableMsg = {.id = driveEnableCmdId, .data = r2dOut.driveEnable ? 1 : 0, .timestamp = now};
-        if (xQueueSend(*xCanTxQueue, &enableMsg, 0) != pdPASS)
-        {
-            canTxSendFailures++;
-        }
+        SendDataMessage(*xCanTxQueue, driveEnableCmdId, r2dOut.driveEnable ? 1 : 0, now, &canTxSendFailures);
 
         // Traces : l'etat une fois par seconde, pas a chaque passage (T17)
         if ((TickType_t)(now - lastTrace) >= pdMS_TO_TICKS(TRACE_PERIOD_MS))
         {
             lastTrace = now;
-            PrintMainState(&mainState, r2d.state, torqueCmd);
+            PrintMainState(&mainState, r2d.state, throttle);
         }
 
         wdgFeedNow(taskId);
@@ -196,8 +186,8 @@ void TaskMain(void *pvParameters)
     }
 }
 
-// function, to print current state of the motor controller (for debug)
-void PrintMainState(const MainState_t *mainState, VcuState_t r2dState, float torqueCmd)
+// Etat de Main, pour les traces
+static void PrintMainState(const MainState_t *mainState, VcuState_t r2dState, float torqueCmd)
 {
     console_print("Main State:\n");
     console_print("  R2D state: %d (0 TS off, 1 TS on, 2 R2D)\n", (int)r2dState);

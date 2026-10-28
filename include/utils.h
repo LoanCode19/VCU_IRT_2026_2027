@@ -5,6 +5,7 @@
 #include <stdint.h>
 
 #include "FreeRTOS.h"
+#include "queue.h"
 #include "task.h"
 #include "structs.h"
 
@@ -24,6 +25,11 @@ typedef struct
 bool AppsMonitorStep(AppsMonitor_t *monitor, bool implausibleNow, float pedalPercent, TickType_t now);
 float ProcessThrottle(float finalSpnt, float speedMs, int motorTemp, int inverterTemp, float voltage, uint32_t elapsedMs);
 void updateDataTimeStatus(dataMessage_t *dataMsg, int count, int maxDiff, TickType_t now);
+// Met a jour l'etat de la donnee selon son delai (updateDataTimeStatus). true si elle est arrivee a temps.
+bool dataFresh(dataMessage_t *data, int timeoutMs, TickType_t now);
+// Depose un message sans attendre : la tache garde sa periode (R1, R3). Queue pleine : le message est perdu, et
+// *lost le compte (lisible au debogueur).
+void SendDataMessage(QueueHandle_t queue, MessageIds id, int32_t data, TickType_t now, uint32_t *lost);
 int32_t WheelRawToMmS(int32_t raw);
 int calculateSpeed(dataMessage_t wheelSpeeds[4], int wheelCount);
 

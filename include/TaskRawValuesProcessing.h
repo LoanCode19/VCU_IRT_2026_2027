@@ -19,8 +19,6 @@ typedef struct
     dataMessage_t brake; // frein, trame d'etat du vehicule (T19)
 
     bool brakePedalPressed; // frein appuye, ou signal du frein douteux (S2)
-    TickType_t lastCallTimeStmp;
-
 } TRVPState_t;
 
 typedef struct

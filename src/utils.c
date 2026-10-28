@@ -265,6 +265,21 @@ void updateDataTimeStatus(dataMessage_t *dataMsg, int count, int maxDiff, TickTy
     }
 }
 
+bool dataFresh(dataMessage_t *data, int timeoutMs, TickType_t now)
+{
+    updateDataTimeStatus(data, 1, timeoutMs, now);
+    return data->timeStatus == STATUS_TIME_OK;
+}
+
+void SendDataMessage(QueueHandle_t queue, MessageIds id, int32_t data, TickType_t now, uint32_t *lost)
+{
+    dataMessage_t msg = {.id = id, .data = data, .timestamp = now};
+    if (xQueueSend(queue, &msg, 0) != pdPASS)
+    {
+        (*lost)++;
+    }
+}
+
 void wdgRegister(TaskId taskId, TickType_t timeout, WDGTimoutTable wdgTimeoutTable)
 {
     if (taskId < MAX_TASKS)

@@ -46,12 +46,16 @@
 #define BRAKE_THROTTLE_RELEASE_PERCENT 5.0f
 
 // Delai de chaque donnee dans Main (S5, T2, decide le 27/10/2026, revisable ; a reprendre du DBC) :
-// au-dela, la donnee est perimee et le couple coupe. Avec les 200 ms de TRVP pour les APPS, la chaine
-// reste sous les 500 ms de T 11.9.4.
+// au-dela, la donnee est perimee et le couple coupe. Avec APPS_TIMEOUT_MS dans TRVP, la chaine reste sous les
+// 500 ms de T 11.9.4.
 #define THROTTLE_CMD_TIMEOUT_MS 100
 #define SPEED_TIMEOUT_MS 200
 #define TEMP_TIMEOUT_MS 500
 #define VOLTAGE_TIMEOUT_MS 500
+
+// Delais dans TRVP (valeurs d'origine) : APPS perime -> couple coupe (S1) ; roue perimee -> ignoree par la vitesse
+#define APPS_TIMEOUT_MS 200
+#define WHEEL_TIMEOUT_MS 400
 
 // Etat du vehicule (trame provisoire 0x012 toutes les 10 ms, T19, decide le 27/10/2026, revisable) : au-dela de ce
 // delai, la trame est perdue. Sortie du R2D, voyant defaut, et le frein compte comme appuye (T 11.9.4 : 500 ms au
