@@ -149,54 +149,34 @@ float CalcThrottle(float potnom, int speed, bool brake)
 }
 
 /**
- * @brief Limiteur de vitesse (B3), en m/s (D7, T12) : aucune limite sous speedLimitMs - speedLimitMarginMs,
- * puis une reduction lineaire jusqu'a 0 a speedLimitMs. Sans filtre : la vitesse est deja la mediane des roues.
+ * @brief Plafond d'une consigne positive pres d'une limite : 0 a la limite et au-dela (distance <= 0), 100 % a
+ * margin de la limite et plus loin, une droite entre les deux. Une consigne nulle ou negative n'est pas limitee.
  *
- * @param finalSpnt consigne en %, reduite sur place si elle est positive
- * @param speedMs vitesse du vehicule, en m/s
+ * @param finalSpnt consigne en %, reduite sur place
+ * @param distance ecart entre la mesure et la limite, positif du cote autorise
+ * @param margin ecart a partir duquel rien n'est reduit
  */
-void SpeedLimitCommand(float *finalSpnt, float speedMs)
+static void LimitNearBound(float *finalSpnt, float distance, float margin)
 {
-    if (*finalSpnt <= 0.0f) // seule une demande de couple positif est limitee
+    if ((*finalSpnt > 0.0f) && (distance < margin))
     {
-        return;
-    }
-    if (speedMs >= speedLimitMs)
-    {
-        *finalSpnt = 0.0f;
-        return;
-    }
-    if (speedMs > speedLimitMs - speedLimitMarginMs)
-    {
-        float maxAllowed = 100.0f * (speedLimitMs - speedMs) / speedLimitMarginMs;
-        *finalSpnt = MIN(*finalSpnt, maxAllowed);
+        *finalSpnt = MIN(*finalSpnt, 100.0f * MAX(distance, 0.0f) / margin);
     }
 }
 
-/**
- * @brief Reduction sur tension batterie basse (S8, T11) : rien au-dessus de udcmin + udcDerateMarginV, puis une
- * baisse lineaire jusqu'a 0 a udcmin. Tirer fort pres de la tension minimale fait encore chuter la tension : les
- * cellules passeraient sous leur minimum, et le BMS ouvrirait le SDC.
- *
- * @param finalSpnt consigne en %, reduite sur place si elle est positive
- * @param udc tension du bus continu, en V
- */
+// Limiteur de vitesse (B3), en m/s (D7, T12) : aucune limite sous speedLimitMs - speedLimitMarginMs, puis une
+// reduction lineaire jusqu'a 0 a speedLimitMs. Sans filtre : la vitesse est deja la mediane des roues.
+void SpeedLimitCommand(float *finalSpnt, float speedMs)
+{
+    LimitNearBound(finalSpnt, speedLimitMs - speedMs, speedLimitMarginMs);
+}
+
+// Tension batterie basse (S8, T11) : rien au-dessus de udcmin + udcDerateMarginV, puis une baisse lineaire
+// jusqu'a 0 a udcmin. Tirer fort pres de la tension minimale la fait encore chuter : les cellules passeraient sous
+// leur minimum, et le BMS ouvrirait le SDC.
 void UdcLimitCommand(float *finalSpnt, float udc)
 {
-    if (*finalSpnt <= 0.0f) // seule une demande de couple positif est limitee
-    {
-        return;
-    }
-    if (udc <= udcmin)
-    {
-        *finalSpnt = 0.0f;
-        return;
-    }
-    if (udc < udcmin + udcDerateMarginV)
-    {
-        float maxAllowed = 100.0f * (udc - udcmin) / udcDerateMarginV;
-        *finalSpnt = MIN(*finalSpnt, maxAllowed);
-    }
+    LimitNearBound(finalSpnt, udc - udcmin, udcDerateMarginV);
 }
 
 bool TemperatureDerate(int temp, int tempMax, float *finalSpnt)
