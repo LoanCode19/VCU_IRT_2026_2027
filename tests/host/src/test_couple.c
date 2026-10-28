@@ -140,6 +140,14 @@ static void TestCouple_SpeedLimiter(void)
     vt_check("B3d", "-", (torque > 49.5f) && (torque < 50.5f),
              "limiteur, vitesse %.2f m/s (milieu des %.1f derniers m/s) -> %.1f %% (attendu 50 : reduction lineaire)",
              middle, speedLimitMarginMs, torque);
+
+    // ProcessThrottle() prend la vitesse en valeur absolue : une vitesse negative est bridee comme la meme vitesse
+    // positive
+    ResetState();
+    float reverse = SettledProcess(100.0f, (int)(-(limit + 1.0f)), NOMINAL_TEMP, NOMINAL_TEMP, NOMINAL_UDC);
+    vt_check("B3g", "-", reverse <= 0.0f,
+             "consigne 100 %%, vitesse %.1f m/s (au-dela de la limite, en negatif) -> %.1f %% (attendu 0)",
+             -(limit + 1.0f), reverse);
 }
 
 static void TestCouple_Ramp(void)
@@ -171,6 +179,23 @@ static void TestCouple_Ramp(void)
              "consigne 50 %%, appel 1 s apres le precedent -> %.1f %% (attendu au plus %.1f : la rampe n'avance que "
              "de %u ms apres une pause)",
              afterPause, maxStep, CONTROL_MAX_ELAPSED_MS);
+
+    // La descente n'a pas de rampe : pedale relachee, la consigne tombe a 0 au passage suivant
+    ResetState();
+    float high = SettledProcess(40.0f, 0, NOMINAL_TEMP, NOMINAL_TEMP, NOMINAL_UDC);
+    float dropped = Process(0.0f, 0.0f, NOMINAL_TEMP, NOMINAL_TEMP, NOMINAL_UDC, 10U);
+    vt_check("R1h", "-", (high > 39.0f) && (dropped == 0.0f),
+             "consigne a %.1f %%, puis demande 0 -> %.1f %% 10 ms plus tard (attendu 0 : pas de rampe a la descente)",
+             high, dropped);
+
+    // T18 : au-dessus de throtRampSpeedMs, la rampe monte a throtRampMaxPerS
+    ResetState();
+    float fastSpeed = throtRampSpeedMs + 0.1f;
+    float fast = Process(50.0f, fastSpeed, NOMINAL_TEMP, NOMINAL_TEMP, NOMINAL_UDC, 10U);
+    float fastExpected = throtRampMaxPerS * 0.01f;
+    vt_check("R1g", "-", (fast > fastExpected - 0.05f) && (fast < fastExpected + 0.05f),
+             "consigne 50 %%, vitesse %.1f m/s, 10 ms -> %.1f %% (attendu %.1f : %.0f %%/s au-dessus de %.1f m/s)",
+             fastSpeed, fast, fastExpected, throtRampMaxPerS, throtRampSpeedMs);
 }
 
 static void TestCouple_TemperatureDerate(void)

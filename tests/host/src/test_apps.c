@@ -56,6 +56,11 @@ static void TestApps_Plausibility(void)
     vt_check("S1a", "T 11.8.8/9", torque <= 0.0f,
              "APPS 30 %% / 70 %% (ecart 40 pts) -> couple %.1f %% (attendu 0)", torque);
 
+    // APPS2 seul au-dessus de sa plage, APPS1 a fond : bornes a 100 % tous les deux, seule la plage les distingue
+    torque = Command(Apps(0, 100.0f, STATUS_TIME_OK), AppsRaw(1, potmax[1] + 300, STATUS_TIME_OK), 0, false);
+    vt_check("S1p", "T 11.9.2.c", torque <= 0.0f,
+             "APPS1 a 100 %%, APPS2 a %d (au-dessus de sa plage) -> couple %.1f %% (attendu 0)", potmax[1] + 300, torque);
+
     torque = Command(Apps(0, 0.0f, STATUS_TIMEOUT), Apps(1, 80.0f, STATUS_TIME_OK), 0, false);
     vt_check("S1b", "T 11.9.2.d", torque <= 0.0f,
              "APPS1 en timeout, APPS2 80 %% -> couple %.1f %% (attendu 0)", torque);
@@ -109,6 +114,19 @@ static void TestApps_Monitor(void)
     vt_check("S1j", "-", released && again,
              "faute confirmee, pedale a 4 %% (D2) puis 40 %% -> couple %s puis %s (attendu autorise et autorise)",
              released ? "autorise" : "coupe", again ? "autorise" : "coupe");
+
+    // Deux incoherences courtes separees par un retour a la normale : chacune compte ses 100 ms depuis son debut
+    monitor = (AppsMonitor_t){0};
+    (void)AppsMonitorStep(&monitor, true, 40.0f, 1000U);
+    (void)AppsMonitorStep(&monitor, true, 40.0f, 1050U);
+    (void)AppsMonitorStep(&monitor, false, 40.0f, 1060U);
+    (void)AppsMonitorStep(&monitor, true, 40.0f, 2000U);
+    (void)AppsMonitorStep(&monitor, true, 40.0f, 2050U);
+    bool afterSecond = AppsMonitorStep(&monitor, false, 40.0f, 2060U);
+    vt_check("S1q", "T 11.8.8", afterSecond && !monitor.latched,
+             "incoherence de 50 ms, retour a la normale, nouvelle incoherence de 50 ms 1 s plus tard -> couple %s, "
+             "faute %s (attendu autorise, non confirmee : chaque incoherence compte depuis son debut)",
+             afterSecond ? "autorise" : "coupe", monitor.latched ? "confirmee" : "non confirmee");
 }
 
 static void TestApps_InputNotModified(void)
@@ -130,8 +148,52 @@ static void TestApps_InputNotModified(void)
     vt_check("S4b", "-", apps2.data == 4500,
              "la valeur brute du capteur n'est pas modifiee par le calcul -> %d (attendu 4500)", (int)apps2.data);
 
+    // APPS2 monte a l'envers, les deux APPS a 40 % : coherents, le couple suit la pedale
+    float inverted = Command(Apps(0, 40.0f, STATUS_TIME_OK), Apps(1, 40.0f, STATUS_TIME_OK), 0, false);
+    vt_check("S4c", "T 11.8.6", inverted > 30.0f,
+             "APPS2 monte a l'envers (%d -> %d), les deux APPS a 40 %% -> couple %.1f %% (attendu ~39)", potmin[1],
+             potmax[1], inverted);
+
     potmin[1] = savedMin;
     potmax[1] = savedMax;
+
+    // Calibration degeneree (course nulle) ou index de capteur invalide : 0 %, jamais une division par zero
+    int savedMax0 = potmax[0];
+    potmax[0] = potmin[0];
+    float flat = NormalizeThrottle(potmin[0], 0);
+    potmax[0] = savedMax0;
+    float badIndex = NormalizeThrottle(2000, 2);
+    vt_check("S4d", "-", (flat == 0.0f) && (badIndex == 0.0f),
+             "course nulle (potmin = potmax) -> %.1f %% ; capteur n. 2 (inexistant) -> %.1f %% (attendu 0 et 0)", flat,
+             badIndex);
+}
+
+// Fenetre de plage : la course, elargie d'une marge de chaque cote. Dans la marge, la valeur est bornee a la course.
+static void TestApps_RangeWindow(void)
+{
+    dataMessage_t below = AppsRaw(0, potmin[0] - 300, STATUS_TIME_OK);
+    dataMessage_t zero = Apps(1, 0.0f, STATUS_TIME_OK);
+    bool belowFault = AppsImplausible(&below, &zero);
+    vt_check("S1r", "T 11.9.2.c", belowFault,
+             "APPS1 a %d (300 sous sa course), APPS2 a 0 %% -> incoherence %s (attendu signalee)", potmin[0] - 300,
+             belowFault ? "signalee" : "non signalee");
+
+    ResetSpeedFilter();
+    float over = Command(AppsRaw(0, potmax[0] + 50, STATUS_TIME_OK), AppsRaw(1, potmax[1] + 50, STATUS_TIME_OK), 0,
+                         false);
+    vt_check("S1s", "-", (over > 99.0f) && (over <= 100.0f),
+             "les deux APPS 50 points au-dessus de leur course -> couple %.1f %% (attendu 100 : tolere, borne a la "
+             "course)",
+             over);
+
+    ResetSpeedFilter();
+    dataMessage_t under = AppsRaw(0, potmin[0] - 50, STATUS_TIME_OK);
+    dataMessage_t nine = Apps(1, 9.0f, STATUS_TIME_OK);
+    bool underFault = AppsImplausible(&under, &nine);
+    vt_check("S1t", "-", !underFault,
+             "APPS1 50 points sous sa course (compte 0 %%), APPS2 a 9 %% -> incoherence %s (attendu non signalee : 9 "
+             "points d'ecart)",
+             underFault ? "signalee" : "non signalee");
 }
 
 static void TestApps_PedalReleased(void)
@@ -144,6 +206,19 @@ static void TestApps_PedalReleased(void)
     torque = Command(Apps(0, 1.9f, STATUS_TIME_OK), Apps(1, 1.9f, STATUS_TIME_OK), 0, false);
     vt_check("S6b", "T 11.8.12", torque <= 0.0f,
              "pedale a 1,9 %% (zone morte de 2 %%) -> couple %.1f %% (attendu 0)", torque);
+
+    // Dans la zone morte, la demande vaut exactement 0, jamais un petit nombre negatif
+    float dead = CalcThrottle(throtdead - 0.1f, 0, false);
+    vt_check("S6c", "T 11.8.12", dead == 0.0f,
+             "pedale a %.1f %% (zone morte de %.0f %%) -> demande %.3f %% (attendu 0 exactement)", throtdead - 0.1f,
+             throtdead, dead);
+
+    // Au-dela, la course restante est remise sur 0..100 % : 51 % -> (51 - 2) x 100 / 98 = 50 %
+    float scaled = CalcThrottle(51.0f, 0, false);
+    float scaledExpected = (51.0f - throtdead) * 100.0f / (100.0f - throtdead);
+    vt_check("S6d", "-", (scaled > scaledExpected - 0.01f) && (scaled < scaledExpected + 0.01f),
+             "pedale a 51 %% -> demande %.2f %% (attendu %.2f : zone morte de %.0f %% puis remise a l'echelle)", scaled,
+             scaledExpected, throtdead);
 }
 
 // Verification frein/accelerateur : plus exigee par FS 2026 (le BSPD materiel couvre ce cas),
@@ -184,6 +259,7 @@ int main(void)
     TestApps_Plausibility();
     TestApps_Monitor();
     TestApps_InputNotModified();
+    TestApps_RangeWindow();
     TestApps_PedalReleased();
     TestApps_BrakePlausibility();
 
