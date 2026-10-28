@@ -7,7 +7,6 @@
 #include "utils.h"
 #include "project_config.h"
 
-#include "console.h"
 #include "TaskCanRX.h"
 
 volatile CanRxStats_t canRxStats = {0};
@@ -128,7 +127,6 @@ static void ProcessFrame(const CanRxParams_t *params, const CanFrame_t *frame)
                 continue;
             }
             RouteMessage(params, signal->route, &appMsg);
-            console_print("sent appMsg id:%d data:%ld\n", appMsg.id, (long)appMsg.data);
         }
     }
 
@@ -170,8 +168,8 @@ void TaskCanRx(void *pvParameters)
     {
         CanFrame_t frame = {0};
 
+        // Attente limitee : un tour au moins toutes les CAN_RX_TIMEOUT, meme sans trafic, pour le watchdog
         xQueuePeek(*rxQueue, &frame, CAN_RX_TIMEOUT);
-        console_print("------(B)CanRx------\n");
 
         while ((xQueueReceive(*rxQueue, &frame, pdMS_TO_TICKS(0))) == pdPASS)
         {
@@ -179,7 +177,5 @@ void TaskCanRx(void *pvParameters)
         }
 
         wdgFeedNow(taskId);
-
-        console_print("------(E)CanRx------\n\n");
     }
 }

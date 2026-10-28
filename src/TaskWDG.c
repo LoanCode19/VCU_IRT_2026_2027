@@ -24,7 +24,6 @@ void TaskWDG(void *pvParameters)
     while (1)
     {
         vTaskDelayUntil(&timeNow, WDG_PERIOD);
-        console_print("------(B)WDG------\n");
 
         if (checkTasksTimeout())
         {
@@ -35,7 +34,6 @@ void TaskWDG(void *pvParameters)
             // Une tache est en retard : plus de rafraichissement, l'IWDG va redemarrer la carte
             console_print("WDG: tache en retard\n");
         }
-        console_print("------(E)WDG------\n\n");
     }
 }
 

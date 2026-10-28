@@ -103,15 +103,10 @@ float ProcessThrottle(float finalSpnt, float speedMs, int motorTemp, int inverte
     // Courant et puissance (S8) : lot 6c, apres D4
     SpeedLimitCommand(&finalSpnt, ABS(speedMs));
 
-    if (TemperatureDerate(motorTemp, motorTempMax, &finalSpnt))
-    {
-        console_print("derating becouse of motor temprature\n");
-    }
-
-    if (TemperatureDerate(inverterTemp, inverterTempMax, &finalSpnt))
-    {
-        console_print("derating because of inverter temprature\n");
-    }
+    // Temperatures : 50 % juste au-dessus du maximum, puis 0. Pas de trace ici (100 appels par seconde) : les
+    // temperatures apparaissent dans celles de Main (T17).
+    (void)TemperatureDerate(motorTemp, motorTempMax, &finalSpnt);
+    (void)TemperatureDerate(inverterTemp, inverterTempMax, &finalSpnt);
 
     // Apres une pause (tache retardee, debogueur), la rampe n'avance que de CONTROL_MAX_ELAPSED_MS (R1)
     finalSpnt = RampThrottle(finalSpnt, rampPerS, MIN(elapsedMs, CONTROL_MAX_ELAPSED_MS));
