@@ -11,9 +11,13 @@ void console_init(void)
 {
 }
 
+// Nombre d'appels a console_print() depuis le debut du test (T17 : traces une fois par seconde)
+unsigned uxTestConsolePrintCount = 0U;
+
 void console_print(const char *fmt, ...)
 {
     static int verbose = -1;
+    uxTestConsolePrintCount++;
     if (verbose < 0)
     {
         verbose = (getenv("VCU_TEST_VERBOSE") != NULL) ? 1 : 0;

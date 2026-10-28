@@ -1,6 +1,7 @@
 // Secteur : chaine de couple TaskRawValuesProcessing -> TaskMain -> queue CanTx
 // Code teste : les deux taches en vrai, avec les queues de MainApp()
-// Problemes : B2, S5, S3 de AUDIT_VCU.md
+// Problemes : B2, S5, S3 de AUDIT_VCU.md, et ce que TRVP et Main font elles-memes sur plusieurs periodes : roues (B4),
+// frein (S2), APPS (S1), delais (S5), rampe (R1), envoi sans attente (R3), traces (T17)
 //
 // Les tests de securite ne concluent que si la chaine sait produire du couple (B2a).
 // Sinon ils sont BLOQUES : "le couple est a 0" serait vrai pour une mauvaise raison.
@@ -14,6 +15,7 @@
 #include "my_fp.h"
 #include "TaskMain.h"
 #include "TaskRawValuesProcessing.h"
+#include "utils.h"
 #include "test_app.h"
 #include "test_vehicle.h"
 #include "vcu_test.h"
@@ -339,6 +341,462 @@ static void TestChaine_R2DNeedsBrake(void)
              pressed, enablePressed, invalid, enableInvalid, missing, enableMissing);
 }
 
+// ------------------------------------------------------------------------------------------------------------------
+// TRVP en vrai sur plusieurs periodes : ce que la tache elle-meme range, date et verifie (pas seulement les fonctions
+// de calcul de utils.c). Ce que TRVP a envoye a Main a chaque passe ; -1 : rien.
+
+#define TRVP_MAX_PASSES 64U
+
+typedef void (*TrvpInputs_t)(unsigned pass, TickType_t now);
+static TrvpInputs_t sTrvpInputs;
+static unsigned sTrvpPass;
+static float sTrvpPedal[TRVP_MAX_PASSES];
+static int32_t sTrvpSpeed[TRVP_MAX_PASSES];
+static int sTrvpFault[TRVP_MAX_PASSES];
+
+static void TrvpCollect(void)
+{
+    dataMessage_t msg = {0};
+    while (xQueueReceive(xMainQueue, &msg, 0) == pdPASS)
+    {
+        if (sTrvpPass >= TRVP_MAX_PASSES)
+        {
+            continue;
+        }
+        if (msg.id == processedThrottleId)
+        {
+            sTrvpPedal[sTrvpPass] = FP_TOFLOAT(msg.data);
+        }
+        else if (msg.id == calculatedSpeedId)
+        {
+            sTrvpSpeed[sTrvpPass] = msg.data;
+        }
+        else if (msg.id == appsFaultId)
+        {
+            sTrvpFault[sTrvpPass] = (int)msg.data;
+        }
+    }
+}
+
+static void TrvpWakeHook(TickType_t now)
+{
+    TrvpCollect();
+    sTrvpPass++;
+    if (sTrvpInputs != NULL)
+    {
+        sTrvpInputs(sTrvpPass, now);
+    }
+}
+
+// TRVP pendant passes periodes, a partir de l'heure start ; inputs depose les messages de chaque passe
+static void RunTrvp(TickType_t start, unsigned passes, TrvpInputs_t inputs)
+{
+    Setup();
+    vTestSetTickCount(start);
+    for (unsigned i = 0; i < TRVP_MAX_PASSES; i++)
+    {
+        sTrvpPedal[i] = -1.0f;
+        sTrvpSpeed[i] = -1;
+        sTrvpFault[i] = -1;
+    }
+    sTrvpPass = 0U;
+    sTrvpInputs = inputs;
+    if (inputs != NULL)
+    {
+        inputs(0U, start);
+    }
+    vTestSetDelayCallsBeforeEscape(passes - 1U, TrvpWakeHook);
+    RunTaskOnce(TaskRawValuesProcessing, &sTrvpParams);
+    vTestSetDelayCallsBeforeEscape(0U, NULL);
+    TrvpCollect();
+}
+
+static void PushApps(float percent1, float percent2, TickType_t timestamp)
+{
+    Push(xTRVPQueue, apps1Id, (int32_t)(potmin[0] + (potmax[0] - potmin[0]) * percent1 / 100.0f), timestamp);
+    Push(xTRVPQueue, apps2Id, (int32_t)(potmin[1] + (potmax[1] - potmin[1]) * percent2 / 100.0f), timestamp);
+}
+
+// Vitesses des quatre roues (m/s) et heure de leurs trames ; < 0 : roue non envoyee
+static float sWheelMs[4];
+static TickType_t sWheelTimestamp[2]; // roues avant, roues arriere
+
+static void WheelsOnce(unsigned pass, TickType_t now)
+{
+    (void)now;
+    if (pass == 0U)
+    {
+        for (int i = 0; i < 4; i++)
+        {
+            if (sWheelMs[i] >= 0.0f)
+            {
+                Push(xTRVPQueue, (MessageIds)(wheelFRId + i), WheelRawFor(sWheelMs[i]), sWheelTimestamp[i / 2]);
+            }
+        }
+    }
+}
+
+// Vitesse envoyee par TRVP apres une passe, et ce que donnent les memes roues converties par le code (mm/s)
+static int32_t TrvpSpeed(float fr, float fl, float rr, float rl, TickType_t start, TickType_t frontTimestamp)
+{
+    sWheelMs[0] = fr;
+    sWheelMs[1] = fl;
+    sWheelMs[2] = rr;
+    sWheelMs[3] = rl;
+    sWheelTimestamp[0] = frontTimestamp;
+    sWheelTimestamp[1] = start;
+    RunTrvp(start, 1U, WheelsOnce);
+    return sTrvpSpeed[0];
+}
+
+static int32_t MmS(float speedMs)
+{
+    return WheelRawToMmS(WheelRawFor(speedMs));
+}
+
+// Frein a chaque passe (valeur brake, -1 : jamais envoye) ; APPS a 40 % a la premiere passe, ou a chaque passe
+static int32_t sBrakeValue;
+static bool sAppsEveryPass;
+
+static void BrakeAndApps(unsigned pass, TickType_t now)
+{
+    if ((pass == 0U) || sAppsEveryPass)
+    {
+        PushApps(40.0f, 40.0f, now);
+    }
+    if (sBrakeValue >= 0)
+    {
+        Push(xTRVPQueue, brakePressedId, sBrakeValue, now);
+    }
+}
+
+static float TrvpPedalAt(TickType_t start, unsigned passes, int32_t brake, bool appsEveryPass, unsigned pass)
+{
+    sBrakeValue = brake;
+    sAppsEveryPass = appsEveryPass;
+    RunTrvp(start, passes, BrakeAndApps);
+    return sTrvpPedal[pass];
+}
+
+// S1o : APPS incoherents pendant 150 ms, coherents a 40 %, pedale relachee, puis de nouveau a 40 %
+static void AppsFaultThenRelease(unsigned pass, TickType_t now)
+{
+    if (pass < 15U)
+    {
+        PushApps(30.0f, 70.0f, now);
+    }
+    else if ((pass < 25U) || (pass >= 28U))
+    {
+        PushApps(40.0f, 40.0f, now);
+    }
+    else
+    {
+        PushApps(2.0f, 2.0f, now);
+    }
+    Push(xTRVPQueue, brakePressedId, 0, now);
+}
+
+// S1m : seul le frein arrive, les APPS jamais
+static void BrakeOnly(unsigned pass, TickType_t now)
+{
+    (void)pass;
+    Push(xTRVPQueue, brakePressedId, 0, now);
+}
+
+static void TestChaine_Trvp(void)
+{
+    // B4 : chaque roue est rangee a sa place. Quatre vitesses differentes, une aberrante -> moyenne des deux du milieu.
+    int32_t speed = TrvpSpeed(8.0f, 10.0f, 10.2f, 30.0f, T_NOW, T_NOW);
+    int32_t expected = (MmS(10.0f) + MmS(10.2f)) / 2;
+    vt_check("B4c", "-", speed == expected,
+             "TRVP, roues FR 8, FL 10, RR 10,2, RL 30 m/s -> vitesse %ld mm/s (attendu %ld : moyenne des deux du milieu)",
+             (long)speed, (long)expected);
+
+    // B4 : au demarrage, une roue jamais recue ne compte pas (elle vaudrait 0)
+    speed = TrvpSpeed(10.0f, 10.0f, -1.0f, -1.0f, 100U, 100U);
+    vt_check("B4d", "-", speed == MmS(10.0f),
+             "TRVP a t = 100 ms, roues avant a 10 m/s, roues arriere jamais recues -> vitesse %ld mm/s (attendu %ld)",
+             (long)speed, (long)MmS(10.0f));
+
+    // B4 : une roue perimee (plus de WHEEL_TIMEOUT_MS) ne compte plus
+    speed = TrvpSpeed(20.0f, 20.0f, 10.0f, 10.0f, T_NOW, T_NOW - (WHEEL_TIMEOUT_MS + 100U));
+    vt_check("B4e", "-", speed == MmS(10.0f),
+             "TRVP, roues avant a 20 m/s vieilles de %d ms, roues arriere a 10 m/s -> vitesse %ld mm/s (attendu %ld : "
+             "roues avant ignorees)",
+             WHEEL_TIMEOUT_MS + 100, (long)speed, (long)MmS(10.0f));
+
+    // S2 : au demarrage, un frein jamais recu compte comme appuye, meme avant son delai de 100 ms
+    float released = TrvpPedalAt(50U, 1U, 0, false, 0U);
+    float never = TrvpPedalAt(50U, 1U, -1, false, 0U);
+    float invalid = TrvpPedalAt(T_NOW, 1U, 2, false, 0U);
+    if (released <= 0.0f)
+    {
+        vt_blocked("S2d", "T 11.9.2.d", "TRVP : pas de consigne pedale avec le frein relache, frein absent non verifiable");
+        vt_blocked("S2e", "T 11.9.2.c", "TRVP : pas de consigne pedale avec le frein relache, frein invalide non verifiable");
+    }
+    else
+    {
+        vt_check("S2d", "T 11.9.2.d", never == 0.0f,
+                 "TRVP a t = 50 ms, APPS 40 %% : frein relache -> consigne %.1f %% ; frein jamais recu -> %.1f %% "
+                 "(attendu > 0, puis 0)",
+                 released, never);
+        // T19 bis : une valeur autre que 0 ou 1 rend le frein douteux, donc appuye
+        vt_check("S2e", "T 11.9.2.c", invalid == 0.0f,
+                 "TRVP, APPS 40 %%, frein a 2 (valeur invalide) -> consigne %.1f %% (attendu 0)", invalid);
+    }
+
+    // S1 : APPS recus une seule fois -> perimes apres APPS_TIMEOUT_MS, la consigne tombe a 0
+    float first = TrvpPedalAt(T_NOW, 26U, 0, false, 0U);
+    float later = sTrvpPedal[25];
+    vt_check("S1n", "T 11.9.2.d", (first > 0.0f) && (later == 0.0f),
+             "TRVP, APPS a 40 %% recus une seule fois -> consigne %.1f %% puis, 250 ms plus tard, %.1f %% (attendu > 0, "
+             "puis 0 : APPS perimes apres %d ms)",
+             first, later, APPS_TIMEOUT_MS);
+
+    // S1, D2 : la faute confirmee coupe la consigne dans la tache elle-meme, jusqu'a la pedale relachee
+    RunTrvp(T_NOW, 31U, AppsFaultThenRelease);
+    vt_check("S1o", "T 11.8.8", (sTrvpPedal[24] == 0.0f) && (sTrvpPedal[30] > 0.0f),
+             "TRVP, APPS 30 %% / 70 %% pendant 150 ms, puis coherents a 40 %% -> consigne %.1f %% ; pedale relachee "
+             "puis 40 %% -> %.1f %% (attendu 0 : faute confirmee, puis > 0 : D2)",
+             sTrvpPedal[24], sTrvpPedal[30]);
+
+    // S1 : APPS jamais recus depuis le demarrage -> incoherence, confirmee apres 100 ms (voyant defaut)
+    RunTrvp(0U, 16U, BrakeOnly);
+    vt_check("S1m", "T 11.8.9", sTrvpFault[15] == 1,
+             "TRVP depuis t = 0, APPS jamais recus -> faute APPS envoyee a Main a 150 ms : %d (attendu 1 ; -1 : rien "
+             "envoye)",
+             sTrvpFault[15]);
+}
+
+// ------------------------------------------------------------------------------------------------------------------
+// TaskMain en vrai sur plusieurs periodes : donnees fraiches a chaque passe, sequence R2D, et une donnee qui cesse
+// d'arriver a partir de la passe sStopPass (sStopId ; tsActiveId : toute la trame d'etat ; -1 : aucune).
+
+static int sStopId;
+static unsigned sStopPass;
+static bool sNeverSent; // sStopId n'est jamais envoye (meme a la passe 0)
+
+static void MainData(unsigned pass, TickType_t now)
+{
+    bool stopped = sNeverSent || (pass >= sStopPass);
+    if (!(stopped && (sStopId == (int)tsActiveId)))
+    {
+        TestR2DEntry(pass, now);
+    }
+    const struct
+    {
+        MessageIds id;
+        int32_t value;
+    } data[] = {{processedThrottleId, FP_FROMFLT(40.0f)}, {calculatedSpeedId, 0}, {motor_tempId, 40},
+                {inverter_tempId, 40}, {voltageId, 350}};
+    for (unsigned i = 0; i < sizeof(data) / sizeof(data[0]); i++)
+    {
+        if (!(stopped && (sStopId == (int)data[i].id)))
+        {
+            Push(xMainQueue, data[i].id, data[i].value, now);
+        }
+    }
+}
+
+// Main pendant passes periodes a partir de start ; stopId cesse d'arriver a la passe stopPass
+static void RunMainData(TickType_t start, unsigned passes, int stopId, unsigned stopPass, bool neverSent)
+{
+    Setup();
+    vTestSetTickCount(start);
+    sStopId = stopId;
+    sStopPass = stopPass;
+    sNeverSent = neverSent;
+    TestRunMain(&sMainParams, passes, MainData);
+}
+
+static float TorqueAt(unsigned pass)
+{
+    return sTestRun.torqueSent[pass] ? sTestRun.torque[pass] : 0.0f;
+}
+
+// Une donnee qui cesse d'arriver : couple, puis 0 et voyant defaut apres son delai
+static void CheckStops(const char *id, const char *rule, int stopId, int timeoutMs, const char *name)
+{
+    unsigned passes = (unsigned)(timeoutMs / (int)CONTROL_PERIOD_MS) + 10U;
+    RunMainData(T_NOW, passes, stopId, 5U, false);
+    float before = TorqueAt(4U);
+    float after = TorqueAt(passes - 1U);
+    int light = TestLastFaultLight();
+    if (before <= 0.0f)
+    {
+        vt_blocked(id, rule, "Main sans couple avec des donnees fraiches : perte de la %s non verifiable", name);
+        return;
+    }
+    vt_check(id, rule, (after == 0.0f) && (light == 1),
+             "en R2D, %s plus envoyee apres 50 ms -> consigne %.1f %%, puis %.1f %% %d ms plus tard, voyant %s (attendu "
+             "> 0, puis 0 et voyant allume)",
+             name, before, after, (int)(passes - 5U) * (int)CONTROL_PERIOD_MS, (light == 1) ? "allume" : "eteint");
+}
+
+// R1e : TS actif sans R2D pendant 200 ms, pedale a 40 % ; puis entree en R2D a la passe 20
+static void TsThenR2D(unsigned pass, TickType_t now)
+{
+    TestVehicle_t vehicle = {true, true, false, false};
+    if (pass == 20U)
+    {
+        vehicle = (TestVehicle_t){true, true, true, true};
+    }
+    else if (pass > 20U)
+    {
+        vehicle = (TestVehicle_t){true, true, false, true};
+    }
+    TestPushVehicle(vehicle, now);
+    Push(xMainQueue, processedThrottleId, FP_FROMFLT(40.0f), now);
+    Push(xMainQueue, calculatedSpeedId, 0, now);
+    Push(xMainQueue, motor_tempId, 40, now);
+    Push(xMainQueue, inverter_tempId, 40, now);
+    Push(xMainQueue, voltageId, 350, now);
+}
+
+// R1f : en R2D, Main se reveille 15 ms en retard a la passe 10
+static void LateWake(unsigned pass, TickType_t now)
+{
+    if (pass == 10U)
+    {
+        now += 15U;
+        vTestSetTickCount(now);
+    }
+    MainData(pass, now);
+}
+
+// S5 : l'etat d'une donnee selon son age (updateDataTimeStatus, utils.c)
+static void TestChaine_DataAge(void)
+{
+    dataMessage_t never = {.timestamp = 0, .timeStatus = STATUS_NOT_READY};
+    dataMessage_t exact = {.timestamp = T_NOW - 100U, .timeStatus = STATUS_TIME_OK};
+    dataMessage_t old = {.timestamp = T_NOW - 101U, .timeStatus = STATUS_TIME_OK};
+    updateDataTimeStatus(&never, 1, 100, T_NOW);
+    updateDataTimeStatus(&exact, 1, 100, T_NOW);
+    updateDataTimeStatus(&old, 1, 100, T_NOW);
+    vt_check("S5k", "T 11.9.2.d",
+             (never.timeStatus == STATUS_NOT_READY) && (exact.timeStatus == STATUS_TIME_OK) &&
+                 (old.timeStatus == STATUS_TIMEOUT),
+             "delai de 100 ms, a t = %u ms : donnee jamais recue -> etat %d ; vieille de 100 ms -> %d ; de 101 ms -> %d "
+             "(attendu %d jamais recue, %d fraiche, %d perimee)",
+             (unsigned)T_NOW, never.timeStatus, exact.timeStatus, old.timeStatus, STATUS_NOT_READY, STATUS_TIME_OK,
+             STATUS_TIMEOUT);
+}
+
+// R3 : une queue pleine ne bloque jamais la tache qui depose ; la perte est comptee (SendDataMessage, utils.c)
+static void TestChaine_SendNeverBlocks(void)
+{
+    Setup();
+    dataMessage_t filler = {.id = calculatedSpeedId};
+    while (xQueueSend(xCanTxQueue, &filler, 0) == pdPASS)
+    {
+    }
+    uint32_t lost = 0U;
+    SendDataMessage(xCanTxQueue, inverterTorqueCmdId, FP_FROMFLT(30.0f), T_NOW, &lost);
+    SendDataMessage(xCanTxQueue, driveEnableCmdId, 1, T_NOW, &lost);
+    vt_check("R3a", "-", lost == 2U,
+             "queue de CanTx pleine, 2 messages deposes -> %lu perte(s) comptee(s), sans attendre (attendu 2)",
+             (unsigned long)lost);
+}
+
+// T17 : TRVP et Main ecrivent leur etat une fois par seconde, jamais a chaque passage
+extern unsigned uxTestConsolePrintCount;
+
+static void TestChaine_Traces(void)
+{
+    sBrakeValue = 0;
+    sAppsEveryPass = true;
+    unsigned before = uxTestConsolePrintCount;
+    RunTrvp(T_NOW, 201U, BrakeAndApps);
+    unsigned trvpPrints = uxTestConsolePrintCount - before;
+    before = uxTestConsolePrintCount;
+    RunMainData(T_NOW, 201U, -1, 0U, false);
+    unsigned mainPrints = uxTestConsolePrintCount - before;
+    vt_check("T17a", "-", (trvpPrints <= 30U) && (mainPrints <= 30U),
+             "2 s de marche (201 passes) -> %u ligne(s) de trace pour TRVP, %u pour Main (attendu au plus 30 chacune : "
+             "l'etat une fois par seconde, une dizaine de lignes)",
+             trvpPrints, mainPrints);
+}
+
+static void TestChaine_Main(void)
+{
+    // S5, T2 : chaque donnee seule, quand elle cesse d'arriver
+    CheckStops("S5h", "T 11.9.4", voltageId, VOLTAGE_TIMEOUT_MS, "tension");
+    CheckStops("S5i", "T 11.9.4", calculatedSpeedId, SPEED_TIMEOUT_MS, "vitesse");
+
+    // T19 : trame d'etat perdue en R2D -> sortie du R2D, Drive enable 0 et voyant, apres VEHICLE_STATE_TIMEOUT_MS
+    RunMainData(T_NOW, 20U, (int)tsActiveId, 5U, false);
+    float inR2D = TorqueAt(4U);
+    float lost = TorqueAt(19U);
+    int enable = sTestRun.driveEnable[19];
+    int light = TestLastFaultLight();
+    if (inR2D <= 0.0f)
+    {
+        vt_blocked("S3q", "T 11.9.2.d", "Main sans couple en R2D : perte de la trame d'etat non verifiable");
+    }
+    else
+    {
+        vt_check("S3q", "T 11.9.2.d", (lost == 0.0f) && (enable == 0) && (light == 1),
+                 "en R2D, trame d'etat plus recue apres 50 ms -> consigne %.1f %%, puis %.1f %% 140 ms plus tard, Drive "
+                 "enable %d, voyant %s (attendu > 0, puis 0, 0 et allume)",
+                 inR2D, lost, enable, (light == 1) ? "allume" : "eteint");
+    }
+
+    // S5 : au demarrage, chaque donnee jamais recue coupe le couple, meme avant son delai
+    RunMainData(20U, TEST_R2D_PASSES + 2U, -1, 0U, false);
+    float allSent = TorqueAt(TEST_R2D_PASSES + 1U);
+    const struct
+    {
+        MessageIds id;
+        const char *name;
+    } inputs[] = {{processedThrottleId, "consigne"}, {calculatedSpeedId, "vitesse"}, {motor_tempId, "temp. moteur"},
+                  {inverter_tempId, "temp. onduleur"}, {voltageId, "tension"}};
+    bool allCut = true;
+    for (unsigned i = 0; i < sizeof(inputs) / sizeof(inputs[0]); i++)
+    {
+        RunMainData(20U, TEST_R2D_PASSES + 2U, (int)inputs[i].id, 0U, true);
+        float torque = TorqueAt(TEST_R2D_PASSES + 1U);
+        if (torque != 0.0f)
+        {
+            allCut = false;
+            vt_note("%s jamais recue : consigne %.1f %%", inputs[i].name, torque);
+        }
+    }
+    if (allSent <= 0.0f)
+    {
+        vt_blocked("S5j", "T 11.9.2.d", "Main sans couple au demarrage : donnees jamais recues non verifiables");
+    }
+    else
+    {
+        vt_check("S5j", "T 11.9.2.d", allCut,
+                 "au demarrage (t = 20 ms), toutes les donnees -> consigne %.1f %% ; une seule jamais recue (consigne, "
+                 "vitesse, temperature moteur, onduleur, tension) -> %s (attendu > 0, puis 0 a chaque fois)",
+                 allSent, allCut ? "0 a chaque fois" : "du couple");
+    }
+
+    // R1 : la rampe repart de 0 a l'entree en R2D, meme si la pedale etait enfoncee avant
+    Setup();
+    TestRunMain(&sMainParams, 22U, TsThenR2D);
+    float step = throtRampPerS * (float)CONTROL_PERIOD_MS / 1000.0f;
+    float entry = TorqueAt(20U);
+    vt_check("R1e", "-", (entry > 0.0f) && (entry <= step + 0.05f),
+             "TS actif 200 ms sans R2D, pedale a 40 %%, puis entree en R2D -> premiere consigne %.1f %% (attendu entre 0 "
+             "et %.1f : la rampe repart de 0)",
+             entry, step);
+
+    // R1 : la rampe avance du temps reellement ecoule (passe en retard de 15 ms : 25 ms, bornes a 20 ms)
+    Setup();
+    sStopId = -1;
+    sStopPass = 0U;
+    sNeverSent = false;
+    TestRunMain(&sMainParams, 12U, LateWake);
+    float lateStep = TorqueAt(10U) - TorqueAt(9U);
+    float maxStep = throtRampPerS * (float)CONTROL_MAX_ELAPSED_MS / 1000.0f;
+    vt_check("R1f", "-", (lateStep > step + 0.05f) && (lateStep <= maxStep + 0.05f),
+             "en R2D, Main reveillee 15 ms en retard -> la consigne monte de %.1f %% (attendu plus de %.1f, au plus "
+             "%.1f : rampe sur le temps ecoule, bornee a %u ms)",
+             lateStep, step, maxStep, (unsigned)CONTROL_MAX_ELAPSED_MS);
+}
+
 int main(void)
 {
     vt_begin("Chaine de couple TRVP -> Main -> CanTx");
@@ -360,6 +818,11 @@ int main(void)
 
     TestChaine_R2DAndFaults();
     TestChaine_R2DNeedsBrake();
+    TestChaine_Trvp();
+    TestChaine_Main();
+    TestChaine_DataAge();
+    TestChaine_Traces();
+    TestChaine_SendNeverBlocks();
 
     if (!chainWorks)
     {
