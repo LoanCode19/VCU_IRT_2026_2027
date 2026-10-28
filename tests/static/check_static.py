@@ -218,7 +218,10 @@ def check_sources():
     # CAN_ReadNext, defini seulement sous LINUX. L'emulateur FreeRTOS (Emulators/FreeRTOS_PC) le remplace.
     old_injector = ["Emulators/CanISREmulator.c", "Emulators/CanISREmulator.h", "Emulators/CanRXDriverEmulator.c",
                     "Emulators/CanRXDriverEmulator.h", "dataSets"]
-    leftovers = [p for p in old_injector if (ROOT / p).exists()]
+    # Un dossier vide ne compte pas : Git ne suit pas les dossiers, mais OneDrive peut en laisser un apres un
+    # changement de branche
+    leftovers = [p for p in old_injector
+                 if (ROOT / p).is_file() or ((ROOT / p).is_dir() and any((ROOT / p).iterdir()))]
     if "TEST_ISR" in vcu:
         leftovers.append("bloc TEST_ISR de VCU.c")
     check("P3a", "-", not leftovers,
