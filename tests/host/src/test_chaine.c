@@ -206,10 +206,8 @@ static void AppsFaultInR2D(unsigned pass, TickType_t now)
     Push(xMainQueue, motor_tempId, 40, now);
     Push(xMainQueue, inverter_tempId, 40, now);
     Push(xMainQueue, voltageId, 350, now);
-    if (pass >= TEST_R2D_PASSES)
-    {
-        Push(xMainQueue, appsFaultId, 1, now);
-    }
+    // La faute APPS part avec la consigne, a chaque periode, comme dans TRVP (Q8) : 0, puis la faute confirmee
+    Push(xMainQueue, appsFaultId, (pass >= TEST_R2D_PASSES) ? 1 : 0, now);
 }
 
 static const char *LightName(int state)
@@ -298,6 +296,7 @@ static void SwitchOnWithBrake(unsigned pass, TickType_t now)
         Push(xMainQueue, brakePressedId, (pass == 0U) ? 0 : sBrakeAtSwitch, now);
     }
     Push(xMainQueue, processedThrottleId, FP_FROMFLT(40.0f), now);
+    Push(xMainQueue, appsFaultId, 0, now); // la faute APPS part avec la consigne, comme dans TRVP (Q8)
     Push(xMainQueue, calculatedSpeedId, 0, now);
     Push(xMainQueue, motor_tempId, 40, now);
     Push(xMainQueue, inverter_tempId, 40, now);
@@ -587,8 +586,8 @@ static void MainData(unsigned pass, TickType_t now)
     {
         MessageIds id;
         int32_t value;
-    } data[] = {{processedThrottleId, FP_FROMFLT(40.0f)}, {calculatedSpeedId, 0}, {motor_tempId, 40},
-                {inverter_tempId, 40}, {voltageId, 350}};
+    } data[] = {{processedThrottleId, FP_FROMFLT(40.0f)}, {appsFaultId, 0}, {calculatedSpeedId, 0}, {motor_tempId, 40},
+                {inverter_tempId, 40}, {voltageId, 350}}; // la faute APPS part avec la consigne, comme dans TRVP (Q8)
     for (unsigned i = 0; i < sizeof(data) / sizeof(data[0]); i++)
     {
         if (!(stopped && (sStopId == (int)data[i].id)))
@@ -647,6 +646,7 @@ static void TsThenR2D(unsigned pass, TickType_t now)
     }
     TestPushVehicle(vehicle, now);
     Push(xMainQueue, processedThrottleId, FP_FROMFLT(40.0f), now);
+    Push(xMainQueue, appsFaultId, 0, now); // la faute APPS part avec la consigne, comme dans TRVP (Q8)
     Push(xMainQueue, calculatedSpeedId, 0, now);
     Push(xMainQueue, motor_tempId, 40, now);
     Push(xMainQueue, inverter_tempId, 40, now);
@@ -722,6 +722,23 @@ static void TestChaine_Main(void)
     // S5, T2 : chaque donnee seule, quand elle cesse d'arriver
     CheckStops("S5h", "T 11.9.4", voltageId, VOLTAGE_TIMEOUT_MS, "tension");
     CheckStops("S5i", "T 11.9.4", calculatedSpeedId, SPEED_TIMEOUT_MS, "vitesse");
+
+    // Q8 (T28, decide le 01/11/2026, revisable) : la faute APPS a un delai dans Main. Plus recue ou jamais recue, elle
+    // compte comme une faute et allume le voyant, comme un frein douteux (T19 bis).
+    unsigned q8Passes = (unsigned)(THROTTLE_CMD_TIMEOUT_MS / (int)CONTROL_PERIOD_MS) + 10U;
+    RunMainData(T_NOW, q8Passes, (int)appsFaultId, 5U, false);
+    int lightBefore = -1;
+    for (unsigned i = 0; i < 5U; i++)
+    {
+        lightBefore = (sTestRun.faultLight[i] != -1) ? sTestRun.faultLight[i] : lightBefore;
+    }
+    int lightStopped = TestLastFaultLight();
+    RunMainData(T_NOW, q8Passes, (int)appsFaultId, 0U, true);
+    int lightNever = TestLastFaultLight();
+    vt_check("Q8a", "-", (lightBefore == -1) && (lightStopped == 1) && (lightNever == 1),
+             "consigne fraiche : faute APPS a 0 -> voyant %s ; plus recue apres 50 ms -> %s ; jamais recue -> %s "
+             "(attendu aucun ordre, puis allume et allume)",
+             LightName(lightBefore), LightName(lightStopped), LightName(lightNever));
 
     // T19 : trame d'etat perdue en R2D -> sortie du R2D, Drive enable 0 et voyant, apres VEHICLE_STATE_TIMEOUT_MS
     RunMainData(T_NOW, 20U, (int)tsActiveId, 5U, false);

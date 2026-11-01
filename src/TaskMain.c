@@ -115,6 +115,7 @@ void TaskMain(void *pvParameters)
     mainState.sdcClosed.timeStatus = STATUS_NOT_READY;
     mainState.brake.timeStatus = STATUS_NOT_READY;
     mainState.r2dSwitch.timeStatus = STATUS_NOT_READY;
+    mainState.appsFault.timeStatus = STATUS_NOT_READY; // Q8 : jamais recue au demarrage
 
     VcuStateMachine_t r2d; // Ready-to-Drive (S3, T8)
     VcuStateInit(&r2d);
@@ -152,7 +153,9 @@ void TaskMain(void *pvParameters)
         // s'allume, comme pour une trame d'etat du vehicule perdue (T19) ou une faute APPS confirmee (S1). Hors
         // R2D ou donnee perimee, la demande passe a 0 dans le calcul : la rampe repartira de 0.
         bool inputsValid = MainInputsValid(&mainState, now);
-        bool appsFault = (mainState.appsFault.timeStatus == STATUS_TIME_OK) && (mainState.appsFault.data != 0);
+        // Faute APPS (S1, D2) : elle part de TRVP avec la consigne, a chaque periode. Jamais recue ou perimee, elle
+        // compte comme une faute (Q8, T28, decide le 01/11/2026, revisable), comme un frein douteux (T19 bis).
+        bool appsFault = !dataFresh(&mainState.appsFault, THROTTLE_CMD_TIMEOUT_MS, now) || (mainState.appsFault.data != 0);
         SendIhmOrderOnChange(*xIHMQueue, FaultLight, !inputsValid || !vehicle.fresh || appsFault, &faultLightOn);
         SendIhmOrderOnChange(*xIHMQueue, R2Dbuzzer, r2dOut.buzzerOn, &buzzerOn); // son R2D (EV 4.12.1)
 

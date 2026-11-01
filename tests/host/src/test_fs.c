@@ -96,6 +96,7 @@ static float TrvpPedalWithApps(TickType_t appsTimestamp)
 static void PushMainData(float pedalPercent, TickType_t commandTimestamp)
 {
     Push(xMainQueue, processedThrottleId, FP_FROMFLT(pedalPercent), commandTimestamp);
+    Push(xMainQueue, appsFaultId, 0, commandTimestamp); // elle part avec la consigne, comme dans TRVP (Q8)
     Push(xMainQueue, calculatedSpeedId, 0, T_NOW);
     Push(xMainQueue, motor_tempId, 40, T_NOW);
     Push(xMainQueue, inverter_tempId, 40, T_NOW);
