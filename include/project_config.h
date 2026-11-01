@@ -27,10 +27,12 @@
 #define TRVP_QUEUE_LENGTH 20U
 #define MAIN_QUEUE_LENGTH 20U
 
+// Delai de watchdog de chaque tache : sans signe de vie depuis plus longtemps, l'IWDG redemarre la carte. Toutes a
+// 500 ms ; TaskCanRx aussi depuis le lot 8 (W7, T28, decide le 01/11/2026, revisable : elle avait 1 000 ms).
 #define MAIN_WDG_TIMEOUT pdMS_TO_TICKS(500)
 #define TRVP_WDG_TIMEOUT pdMS_TO_TICKS(500)
 #define IHM_WDG_TIMEOUT pdMS_TO_TICKS(500)
-#define CAN_RX_WDG_TIMEOUT pdMS_TO_TICKS(1000)
+#define CAN_RX_WDG_TIMEOUT pdMS_TO_TICKS(500)
 #define CAN_TX_WDG_TIMEOUT pdMS_TO_TICKS(500)
 #define DS_WDG_TIMEOUT pdMS_TO_TICKS(500)
 #define COOLING_WDG_TIMEOUT pdMS_TO_TICKS(500)

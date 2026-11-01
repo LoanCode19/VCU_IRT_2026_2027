@@ -112,6 +112,20 @@ static void TestWatchdog_Registration(void)
              "wdgRegisterTasks() -> %u tache(s) de TaskId sans delai de watchdog (attendu 0 : toutes surveillees)",
              missing);
 
+    // W7 (T28, decide le 01/11/2026, revisable) : TaskCanRx n'a pas un delai plus long que les autres taches. Avec
+    // 1 000 ms, une reception figee mettait jusqu'a 2 s a redemarrer la carte.
+    TickType_t longestOther = 0U;
+    for (int i = 0; i < TASK_COUNT; i++)
+    {
+        if ((i != TaskCanRxId) && (wdgTimeoutTable[i] > longestOther))
+        {
+            longestOther = wdgTimeoutTable[i];
+        }
+    }
+    vt_check("W7a", "-", wdgTimeoutTable[TaskCanRxId] <= longestOther,
+             "delai de watchdog de TaskCanRx %lu ms, le plus long des autres taches %lu ms (attendu pas plus long)",
+             (unsigned long)wdgTimeoutTable[TaskCanRxId], (unsigned long)longestOther);
+
     struct
     {
         WDGTimoutTable table;
