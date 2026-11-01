@@ -3,7 +3,8 @@
 // Problemes : B4 de AUDIT_VCU.md, D7 (+ tests de non-regression NR)
 //
 // Vitesses de roue en mm/s (D7) : TRVP les convertit des la reception. Ecart tolere entre deux roues :
-// WHEEL_MAX_DIFF_MMS (1 m/s).
+// WHEEL_MAX_DIFF_MMS au plus (T18 revise le 01/11/2026 : 2 m/s, a confirmer avec l'equipe). Les valeurs des tests
+// suivent la constante.
 
 #include "structs.h"
 #include "utils.h"
@@ -53,11 +54,32 @@ static void TestVitesse_NonRegression(void)
     vt_check("NR-1", "-", speed == 10100,
              "4 roues valides (une aberrante) -> %d mm/s (attendu 10100, moyenne des 2 du milieu)", speed);
 
+    // Deux fois l'ecart tolere : 12000 / 14000 mm/s avec l'ancien 1 m/s, 12000 / 16000 avec 2 m/s (T18)
+    const int32_t farValue = 12000 + 2 * WHEEL_MAX_DIFF_MMS;
     dataMessage_t twoFar[4] = {
-        Wheel(12000, STATUS_TIME_OK), Wheel(14000, STATUS_TIME_OK),
+        Wheel(12000, STATUS_TIME_OK), Wheel(farValue, STATUS_TIME_OK),
         Wheel(0, STATUS_TIMEOUT), Wheel(0, STATUS_TIMEOUT)};
     speed = calculateSpeed(twoFar, 4);
-    vt_check("NR-2", "-", speed == 0, "2 roues valides incoherentes (12000 / 14000 mm/s) -> %d (attendu 0)", speed);
+    vt_check("NR-2", "-", speed == 0, "2 roues valides incoherentes (12000 / %ld mm/s) -> %d (attendu 0)",
+             (long)farValue, speed);
+
+    // T18 (revise le 01/11/2026, revisable) : un ecart egal a WHEEL_MAX_DIFF_MMS est accepte, avec deux roues comme
+    // avec trois
+    dataMessage_t twoAtLimit[4] = {
+        Wheel(12000, STATUS_TIME_OK), Wheel(12000 + WHEEL_MAX_DIFF_MMS, STATUS_TIME_OK),
+        Wheel(0, STATUS_TIMEOUT), Wheel(0, STATUS_TIMEOUT)};
+    speed = calculateSpeed(twoAtLimit, 4);
+    vt_check("B4k", "-", speed == 12000 + WHEEL_MAX_DIFF_MMS / 2,
+             "2 roues valides a %d mm/s d'ecart (la limite) -> %d (attendu %d : moyennees, l'ecart est accepte au plus)",
+             WHEEL_MAX_DIFF_MMS, speed, 12000 + WHEEL_MAX_DIFF_MMS / 2);
+    dataMessage_t threeAtLimit[4] = {
+        Wheel(10000, STATUS_TIME_OK), Wheel(10000 + WHEEL_MAX_DIFF_MMS, STATUS_TIME_OK),
+        Wheel(10000 + 2 * WHEEL_MAX_DIFF_MMS, STATUS_TIME_OK), Wheel(0, STATUS_TIMEOUT)};
+    speed = calculateSpeed(threeAtLimit, 4);
+    vt_check("B4l", "-", speed == 10000 + WHEEL_MAX_DIFF_MMS,
+             "3 roues valides a %d mm/s d'ecart l'une de l'autre (la limite) -> %d (attendu %d : moyenne des trois, "
+             "comme avec deux roues)",
+             WHEEL_MAX_DIFF_MMS, speed, 10000 + WHEEL_MAX_DIFF_MMS);
 
     // Trois roues valides : celle qui s'ecarte de plus de WHEEL_MAX_DIFF_MMS est laissee de cote
     const struct
@@ -88,12 +110,17 @@ static void TestVitesse_NonRegression(void)
     speed = calculateSpeed(one, 4);
     vt_check("B4i", "-", speed == 12000, "1 roue valide a 12000 mm/s -> %d (attendu 12000)", speed);
 
-    // Trois roues valides arrivees dans le desordre : elles sont triees avant d'etre comparees
+    // Trois roues valides arrivees dans le desordre : elles sont triees avant d'etre comparees. Ecarts de 6/10 et 5/10
+    // de l'ecart tolere (10600 / 10000 / 9500 mm/s avec l'ancien 1 m/s) : mal triees, elles ne seraient plus d'accord.
+    const int32_t high = 10000 + (6 * WHEEL_MAX_DIFF_MMS) / 10;
+    const int32_t low = 10000 - (5 * WHEEL_MAX_DIFF_MMS) / 10;
+    const int expectedMean = (int)((high + 10000 + low) / 3);
     dataMessage_t unordered[4] = {
-        Wheel(10600, STATUS_TIME_OK), Wheel(10000, STATUS_TIME_OK), Wheel(9500, STATUS_TIME_OK), Wheel(0, STATUS_TIMEOUT)};
+        Wheel(high, STATUS_TIME_OK), Wheel(10000, STATUS_TIME_OK), Wheel(low, STATUS_TIME_OK), Wheel(0, STATUS_TIMEOUT)};
     speed = calculateSpeed(unordered, 4);
-    vt_check("B4j", "-", speed == 10033,
-             "3 roues valides dans le desordre 10600 / 10000 / 9500 mm/s -> %d (attendu 10033 : moyenne des trois)", speed);
+    vt_check("B4j", "-", speed == expectedMean,
+             "3 roues valides dans le desordre %ld / 10000 / %ld mm/s -> %d (attendu %d : moyenne des trois)", (long)high,
+             (long)low, speed, expectedMean);
 
     dataMessage_t none[4] = {
         Wheel(5000, STATUS_NOT_READY), Wheel(5000, STATUS_TIMEOUT),

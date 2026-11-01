@@ -81,8 +81,9 @@
 #define WHEEL_SPEED_PROVISIONAL 1 // a retirer quand les deux valeurs ci-dessous sont mesurees (test D7a)
 #define WHEEL_SENSOR_RAW_IS_RPM 1 // hypothese : le capteur donne des tr/min de roue
 #define WHEEL_RADIUS_M 0.20f      // hypothese : rayon sous charge, a mesurer
-// Ecart maximal entre deux roues pour les moyenner (T18, decide le 27/10/2026, revisable ; a regler en roulant)
-#define WHEEL_MAX_DIFF_MMS 1000
+// Ecart maximal entre deux roues pour les moyenner, accepte au plus (T18, decide le 27/10/2026, revise le
+// 01/11/2026 : 2 m/s au lieu de 1, PROVISOIRE, Loan doit le confirmer avec l'equipe ; a regler en roulant)
+#define WHEEL_MAX_DIFF_MMS 2000
 
 // Refroidissement (valeurs d'origine, a regler) : la plus chaude des temperatures moteur et onduleur, en degres,
 // avec hysteresis. TS actif ou signal TS perdu : tout ON (S12, T9).

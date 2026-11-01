@@ -197,15 +197,16 @@ int32_t calculateSpeed(dataMessage_t wheelSpeeds[4], int wheelCount)
         int32_t d01 = ABS(selectedValues[0] - selectedValues[1]);
         int32_t d12 = ABS(selectedValues[1] - selectedValues[2]);
 
-        if (d01 < WHEEL_MAX_DIFF_MMS && d12 < WHEEL_MAX_DIFF_MMS)
+        // Ecart accepte au plus WHEEL_MAX_DIFF_MMS, comme avec deux roues (T18)
+        if (d01 <= WHEEL_MAX_DIFF_MMS && d12 <= WHEEL_MAX_DIFF_MMS)
         {
             speed = (selectedValues[0] + selectedValues[1] + selectedValues[2]) / 3;
         }
-        else if (d01 < WHEEL_MAX_DIFF_MMS)
+        else if (d01 <= WHEEL_MAX_DIFF_MMS)
         {
             speed = (selectedValues[0] + selectedValues[1]) >> 1;
         }
-        else if (d12 < WHEEL_MAX_DIFF_MMS)
+        else if (d12 <= WHEEL_MAX_DIFF_MMS)
         {
             speed = (selectedValues[1] + selectedValues[2]) >> 1;
         }
