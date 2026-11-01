@@ -166,20 +166,20 @@ static void sort4(int32_t v[4], int n)
     }
 }
 
-// Vitesse du vehicule a partir des roues valides, en mm/s (D7)
-int32_t calculateSpeed(dataMessage_t wheelSpeeds[4], int wheelCount)
+// Vitesse du vehicule a partir des roues a l'heure, en mm/s dans *speed (0 sans vitesse sure).
+// SPEED_OK : quatre roues (moyenne des deux du milieu), trois ou deux roues d'accord a WHEEL_MAX_DIFF_MMS pres (T18),
+// ou une seule roue. SPEED_DISAGREE : deux ou trois roues toutes trop differentes. SPEED_NO_WHEEL : aucune roue a
+// l'heure. TRVP decide ensuite ce qu'elle envoie a Main (SpeedHoldStep, T25).
+SpeedStatus_t calculateSpeed(dataMessage_t wheelSpeeds[4], int wheelCount, int32_t *speed)
 {
-
-    // Simple average of the four wheel speeds
     int32_t selectedValues[4];
-    int32_t speed = 0;
     int validCount = 0;
 
     for (int i = 0; i < wheelCount; ++i)
     {
         if (wheelSpeeds[i].timeStatus != STATUS_TIME_OK)
         {
-            continue; // Skip this wheel if its data is not OK
+            continue; // roue perimee ou jamais recue : ignoree
         }
         selectedValues[validCount] = wheelSpeeds[i].data;
         ++validCount;
@@ -187,10 +187,12 @@ int32_t calculateSpeed(dataMessage_t wheelSpeeds[4], int wheelCount)
 
     sort4(selectedValues, validCount);
 
+    SpeedStatus_t status = SPEED_OK;
+    *speed = 0;
     switch (validCount)
     {
     case 4:
-        speed = (selectedValues[1] + selectedValues[2]) >> 1;
+        *speed = (selectedValues[1] + selectedValues[2]) >> 1; // moyenne des deux du milieu
         break;
     case 3:
     {
@@ -200,42 +202,73 @@ int32_t calculateSpeed(dataMessage_t wheelSpeeds[4], int wheelCount)
         // Ecart accepte au plus WHEEL_MAX_DIFF_MMS, comme avec deux roues (T18)
         if (d01 <= WHEEL_MAX_DIFF_MMS && d12 <= WHEEL_MAX_DIFF_MMS)
         {
-            speed = (selectedValues[0] + selectedValues[1] + selectedValues[2]) / 3;
+            *speed = (selectedValues[0] + selectedValues[1] + selectedValues[2]) / 3;
         }
         else if (d01 <= WHEEL_MAX_DIFF_MMS)
         {
-            speed = (selectedValues[0] + selectedValues[1]) >> 1;
+            *speed = (selectedValues[0] + selectedValues[1]) >> 1;
         }
         else if (d12 <= WHEEL_MAX_DIFF_MMS)
         {
-            speed = (selectedValues[1] + selectedValues[2]) >> 1;
+            *speed = (selectedValues[1] + selectedValues[2]) >> 1;
         }
         else
         {
-            speed = 0;
+            status = SPEED_DISAGREE; // trois roues toutes trop differentes
         }
-
         break;
     }
     case 2:
-        if (ABS(selectedValues[0] - selectedValues[1]) > WHEEL_MAX_DIFF_MMS) // If the two values are too different, we consider them unreliable
+        if (ABS(selectedValues[0] - selectedValues[1]) > WHEEL_MAX_DIFF_MMS)
         {
-            speed = 0;
+            status = SPEED_DISAGREE; // deux roues trop differentes : on ne sait pas laquelle croire
         }
         else
         {
-            speed = (selectedValues[0] + selectedValues[1]) >> 1; // Average of the two values
+            *speed = (selectedValues[0] + selectedValues[1]) >> 1;
         }
         break;
-
     case 1:
-        speed = selectedValues[0]; // Only one valid value, use it as speed
+        *speed = selectedValues[0]; // une seule roue a l'heure : sa vitesse
         break;
     default:
-        speed = 0; // No valid values, set speed to 0
+        status = SPEED_NO_WHEEL;
         break;
     }
-    return speed;
+    return status;
+}
+
+// T25 (decide le 01/11/2026, revisable) : la vitesse que TRVP envoie a Main, dans *out (0 sans vitesse). true si elle
+// part. Roues en desaccord : la derniere vitesse sure, pendant au plus SPEED_HOLD_MS. Aucune roue a l'heure, desaccord
+// trop long ou desaccord sans vitesse sure juste avant : pas de vitesse, et l'ancienne ne revient pas. C'est le seul
+// endroit a changer si T25 evolue.
+bool SpeedHoldStep(SpeedHold_t *hold, SpeedStatus_t status, int32_t speed, TickType_t now, int32_t *out)
+{
+    if (status == SPEED_OK)
+    {
+        hold->speed = speed;
+        hold->known = true;
+        hold->disagreeing = false;
+        *out = speed;
+        return true;
+    }
+    if ((status == SPEED_DISAGREE) && hold->known)
+    {
+        if (!hold->disagreeing)
+        {
+            hold->disagreeing = true;
+            hold->since = now;
+        }
+        if ((TickType_t)(now - hold->since) <= pdMS_TO_TICKS(SPEED_HOLD_MS))
+        {
+            *out = hold->speed;
+            return true;
+        }
+    }
+    hold->known = false;
+    hold->disagreeing = false;
+    *out = 0;
+    return false;
 }
 
 /** This function checks the timestamps of the received data messages and updates their time status accordingly.

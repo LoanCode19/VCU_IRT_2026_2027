@@ -71,6 +71,11 @@
 #define APPS_TIMEOUT_MS 200
 #define WHEEL_TIMEOUT_MS 400
 
+// Vitesse envoyee a Main (T25, decide le 01/11/2026, revisable). Aucune roue a l'heure : plus de vitesse. Roues en
+// desaccord : la derniere vitesse sure pendant au plus SPEED_HOLD_MS (le delai d'une roue muette), puis plus de
+// vitesse. Sans vitesse, Main la voit perimee apres SPEED_TIMEOUT_MS : couple 0 et voyant (T2).
+#define SPEED_HOLD_MS 400
+
 // Etat du vehicule (trame provisoire 0x012 toutes les 10 ms, T19, decide le 27/10/2026, revisable) : au-dela de ce
 // delai, la trame est perdue. Sortie du R2D, voyant defaut, et le frein compte comme appuye (T 11.9.4 : 500 ms au
 // plus).

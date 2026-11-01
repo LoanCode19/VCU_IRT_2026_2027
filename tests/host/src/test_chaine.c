@@ -38,6 +38,7 @@ typedef struct
     bool withoutR2D;  // TS actif, mais pas de sequence R2D (S3a)
     bool temperaturesNeverSent; // tension envoyee, temperatures jamais (S5f)
     int oldTemperature;         // 1 : moteur seul vieux de 2500 ms, 2 : onduleur seul (S5g)
+    bool wheelsNeverSent;       // aucune trame de roue (R8c, T25)
 } ChainInputs_t;
 
 static void Setup(void)
@@ -66,10 +67,13 @@ static bool RunChain(ChainInputs_t in, float *torque)
     int32_t raw1 = (int32_t)(potmin[1] + (potmax[1] - potmin[1]) * in.appsPercent / 100.0f);
     Push(xTRVPQueue, apps1Id, raw0, T_NOW);
     Push(xTRVPQueue, apps2Id, raw1, T_NOW);
-    Push(xTRVPQueue, wheelFRId, in.wheelRaw, T_NOW);
-    Push(xTRVPQueue, wheelFLId, in.wheelRaw, T_NOW);
-    Push(xTRVPQueue, wheelRRId, in.wheelRaw, T_NOW);
-    Push(xTRVPQueue, wheelRLId, in.wheelRaw, T_NOW);
+    if (!in.wheelsNeverSent)
+    {
+        Push(xTRVPQueue, wheelFRId, in.wheelRaw, T_NOW);
+        Push(xTRVPQueue, wheelFLId, in.wheelRaw, T_NOW);
+        Push(xTRVPQueue, wheelRRId, in.wheelRaw, T_NOW);
+        Push(xTRVPQueue, wheelRLId, in.wheelRaw, T_NOW);
+    }
     Push(xTRVPQueue, brakePressedId, 0, T_NOW); // frein relache
     if (in.sendTemperatures && !in.temperaturesNeverSent)
     {
@@ -502,6 +506,38 @@ static void BrakeOnly(unsigned pass, TickType_t now)
     Push(xTRVPQueue, brakePressedId, 0, now);
 }
 
+// R8 (T25) : APPS a 40 % et frein relache a chaque passe, sans roue
+static void AppsNoWheels(unsigned pass, TickType_t now)
+{
+    (void)pass;
+    PushApps(40.0f, 40.0f, now);
+    Push(xTRVPQueue, brakePressedId, 0, now);
+}
+
+// R8b : en plus, les quatre roues a 10 m/s, a la premiere passe seulement
+static void WheelsOnceThenSilent(unsigned pass, TickType_t now)
+{
+    AppsNoWheels(pass, now);
+    if (pass == 0U)
+    {
+        for (int i = 0; i < 4; i++)
+        {
+            Push(xTRVPQueue, (MessageIds)(wheelFRId + i), WheelRawFor(10.0f), now);
+        }
+    }
+}
+
+// R8d, R8e : les deux roues avant seulement, a chaque passe. D'accord a 10 m/s avant la passe sAgreeUntil, puis a 10
+// et 15 m/s : plus de WHEEL_MAX_DIFF_MMS d'ecart.
+static unsigned sAgreeUntil;
+
+static void FrontWheelsDisagree(unsigned pass, TickType_t now)
+{
+    AppsNoWheels(pass, now);
+    Push(xTRVPQueue, wheelFRId, WheelRawFor(10.0f), now);
+    Push(xTRVPQueue, wheelFLId, WheelRawFor((pass < sAgreeUntil) ? 10.0f : 15.0f), now);
+}
+
 static void TestChaine_Trvp(void)
 {
     // B4 : chaque roue est rangee a sa place. Quatre vitesses differentes, une aberrante -> moyenne des deux du milieu.
@@ -565,6 +601,70 @@ static void TestChaine_Trvp(void)
              "TRVP depuis t = 0, APPS jamais recus -> faute APPS envoyee a Main a 150 ms : %d (attendu 1 ; -1 : rien "
              "envoye)",
              sTrvpFault[15]);
+
+    // R8 (T25, decide le 01/11/2026, revisable) : sans vitesse sure, TRVP n'envoie plus de vitesse. Main la voit perimee
+    // apres SPEED_TIMEOUT_MS : couple 0 et voyant (T2). La consigne, elle, part toujours.
+    RunTrvp(T_NOW, 5U, AppsNoWheels);
+    bool noSpeed = true;
+    for (unsigned i = 0; i < 5U; i++)
+    {
+        noSpeed = noSpeed && (sTrvpSpeed[i] == -1);
+    }
+    vt_check("R8a", "-", noSpeed && (sTrvpPedal[4] > 0.0f),
+             "TRVP, APPS a 40 %%, roues jamais recues -> vitesse envoyee : %ld ; consigne %.1f %% (attendu -1 : aucune "
+             "vitesse, et une consigne > 0)",
+             (long)sTrvpSpeed[4], sTrvpPedal[4]);
+
+    unsigned wheelPasses = (unsigned)(WHEEL_TIMEOUT_MS / (int)CONTROL_PERIOD_MS);
+    RunTrvp(T_NOW, wheelPasses + 5U, WheelsOnceThenSilent);
+    vt_check("R8b", "-", (sTrvpSpeed[wheelPasses] == MmS(10.0f)) && (sTrvpSpeed[wheelPasses + 4U] == -1),
+             "TRVP, roues a 10 m/s recues une seule fois -> vitesse %ld mm/s a %d ms, puis %ld a %d ms (attendu %ld, puis "
+             "-1 : plus de vitesse quand la derniere roue est perimee)",
+             (long)sTrvpSpeed[wheelPasses], WHEEL_TIMEOUT_MS, (long)sTrvpSpeed[wheelPasses + 4U],
+             WHEEL_TIMEOUT_MS + 40, (long)MmS(10.0f));
+
+    // Roues en desaccord (T25) : la derniere vitesse sure pendant au plus SPEED_HOLD_MS, puis plus de vitesse
+    unsigned holdPasses = (unsigned)(SPEED_HOLD_MS / (int)CONTROL_PERIOD_MS);
+    sAgreeUntil = 5U;
+    RunTrvp(T_NOW, sAgreeUntil + holdPasses + 5U, FrontWheelsDisagree);
+    int32_t agreed = sTrvpSpeed[sAgreeUntil - 1U];
+    int32_t held = sTrvpSpeed[sAgreeUntil + holdPasses];
+    int32_t after = sTrvpSpeed[sAgreeUntil + holdPasses + 4U];
+    vt_check("R8d", "-", (agreed == MmS(10.0f)) && (held == MmS(10.0f)) && (after == -1),
+             "TRVP, roues avant a 10 m/s, puis a 10 et 15 m/s -> vitesse %ld mm/s ; %d ms de desaccord -> %ld ; %d ms "
+             "-> %ld (attendu %ld, %ld, puis -1 : la derniere vitesse sure, %d ms au plus)",
+             (long)agreed, SPEED_HOLD_MS, (long)held, SPEED_HOLD_MS + 40, (long)after, (long)MmS(10.0f),
+             (long)MmS(10.0f), SPEED_HOLD_MS);
+
+    sAgreeUntil = 0U;
+    RunTrvp(T_NOW, 10U, FrontWheelsDisagree);
+    bool neverSpeed = true;
+    for (unsigned i = 0; i < 10U; i++)
+    {
+        neverSpeed = neverSpeed && (sTrvpSpeed[i] == -1);
+    }
+    vt_check("R8e", "-", neverSpeed,
+             "TRVP, roues avant a 10 et 15 m/s des le demarrage -> vitesse envoyee : %ld (attendu -1 : pas de vitesse "
+             "sure a garder)",
+             (long)sTrvpSpeed[9]);
+
+    // R8c : toute la chaine en R2D. Roues a 0 m/s : du couple ; roues jamais recues : couple 0 et voyant.
+    float withWheels = 0.0f;
+    float withoutWheels = 0.0f;
+    bool sentWith = RunChain((ChainInputs_t){40.0f, true, T_NOW, T_NOW}, &withWheels);
+    bool sentWithout = RunChain((ChainInputs_t){40.0f, true, T_NOW, T_NOW, 0, false, false, 0, true}, &withoutWheels);
+    int lightWithout = FaultLightOrder();
+    if (!sentWith || (withWheels <= 0.0f))
+    {
+        vt_blocked("R8c", "-", "chaine sans couple avec les roues : perte des roues non verifiable");
+    }
+    else
+    {
+        vt_check("R8c", "-", (!sentWithout || (withoutWheels <= 0.0f)) && (lightWithout == 1),
+                 "chaine en R2D, APPS 40 %% : roues a 0 m/s -> consigne %.1f %% ; roues jamais recues -> %.1f %%, "
+                 "voyant %s (attendu > 0, puis 0 et allume)",
+                 withWheels, sentWithout ? withoutWheels : 0.0f, LightName(lightWithout));
+    }
 }
 
 // ------------------------------------------------------------------------------------------------------------------
