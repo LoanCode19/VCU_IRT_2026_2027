@@ -26,6 +26,12 @@
 // Queue pleine : le plus ancien message laisse sa place et la perte est comptee (T13).
 #define TRVP_QUEUE_LENGTH 20U
 #define MAIN_QUEUE_LENGTH 20U
+// Longueurs des autres queues (valeurs d'origine), reunies ici au lot 8 (Q10, T28, decide le 01/11/2026, revisable)
+#define IHM_QUEUE_LENGTH 10U
+#define CAN_TX_QUEUE_LENGTH 10U
+#define CAN_RX_QUEUE_LENGTH 32U // 8 ms de trames au debit maximal (500 kbit/s)
+#define DS_QUEUE_LENGTH 10U
+#define COOLING_QUEUE_LENGTH 10U
 
 // Delai de watchdog de chaque tache : sans signe de vie depuis plus longtemps, l'IWDG redemarre la carte. Toutes a
 // 500 ms ; TaskCanRx aussi depuis le lot 8 (W7, T28, decide le 01/11/2026, revisable : elle avait 1 000 ms).

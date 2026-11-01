@@ -41,15 +41,15 @@ void MainApp(void)
     configASSERT(xMainQueue != NULL);
     xTRVPQueue = xQueueCreate(TRVP_QUEUE_LENGTH, sizeof(dataMessage_t));
     configASSERT(xTRVPQueue != NULL);
-    xIHMQueue = xQueueCreate(10, sizeof(IHMOrder_t));
+    xIHMQueue = xQueueCreate(IHM_QUEUE_LENGTH, sizeof(IHMOrder_t));
     configASSERT(xIHMQueue != NULL);
-    xCanTxQueue = xQueueCreate(10, sizeof(dataMessage_t));
+    xCanTxQueue = xQueueCreate(CAN_TX_QUEUE_LENGTH, sizeof(dataMessage_t));
     configASSERT(xCanTxQueue != NULL);
-    xCanRxQueue = xQueueCreate(32, sizeof(CanFrame_t)); // 8 ms de trames au debit maximal (500 kbit/s)
+    xCanRxQueue = xQueueCreate(CAN_RX_QUEUE_LENGTH, sizeof(CanFrame_t));
     configASSERT(xCanRxQueue != NULL);
-    xDSQueue = xQueueCreate(10, sizeof(DigitalOrder_t));
+    xDSQueue = xQueueCreate(DS_QUEUE_LENGTH, sizeof(DigitalOrder_t));
     configASSERT(xDSQueue != NULL);
-    xCoolingQueue = xQueueCreate(10, sizeof(dataMessage_t));
+    xCoolingQueue = xQueueCreate(COOLING_QUEUE_LENGTH, sizeof(dataMessage_t));
     configASSERT(xCoolingQueue != NULL);
 
     initThrottleValues();

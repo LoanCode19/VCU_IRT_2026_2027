@@ -197,6 +197,13 @@ def check_sources():
     check("R5a", "-", ignored_tasks == 0 and not unchecked,
           f"{ignored_tasks} xTaskCreate et {len(unchecked)} xQueueCreate sans verification du resultat")
 
+    # Q10 (T28, decide le 01/11/2026, revisable) : chaque longueur de queue est une constante de project_config.h,
+    # jamais un nombre ecrit dans MainApp()
+    in_figures = re.findall(r"^\s*(\w+)\s*=\s*xQueueCreate\s*\(\s*\d", vcu, re.M)
+    check("Q10a", "-", queues and not in_figures,
+          f"{len(queues)} queue(s) creee(s) dans MainApp(), dont {len(in_figures)} avec une longueur ecrite en chiffres"
+          + (" : " + ", ".join(in_figures) if in_figures else "") + " (attendu 0 : une constante de project_config.h)")
+
     # R6 : configuration ambigue
     check("R6a", "-", not (INCLUDE / "FreeRTOSConfig.h").exists(),
           "include/FreeRTOSConfig.h (config de demo POSIX) coexiste avec celle de la carte")
