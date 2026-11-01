@@ -12,7 +12,7 @@ void TaskRawValuesProcessing(void *pvParameters);
 
 typedef struct
 {
-    uint32_t speed; // vitesse du vehicule, en mm/s (D7)
+    int32_t speed; // vitesse du vehicule, en mm/s (D7) : int32_t partout, comme dans les messages (Q5)
 
     dataMessage_t wheelSpeeds[4];
     dataMessage_t appsValues[2];

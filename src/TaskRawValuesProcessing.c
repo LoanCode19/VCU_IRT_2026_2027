@@ -99,7 +99,7 @@ void TaskRawValuesProcessing(void *pvParameters)
         }
 
         SendDataMessage(*xMainQueue, processedThrottleId, FP_FROMFLT(throttleCommand), now, &trvpSendFailures);
-        SendDataMessage(*xMainQueue, calculatedSpeedId, (int32_t)trvpState.speed, now, &trvpSendFailures); // mm/s
+        SendDataMessage(*xMainQueue, calculatedSpeedId, trvpState.speed, now, &trvpSendFailures); // mm/s
         // Faute APPS confirmee (S1, D2) : Main allume le voyant defaut
         SendDataMessage(*xMainQueue, appsFaultId, appsMonitor.latched ? 1 : 0, now, &trvpSendFailures);
 
@@ -121,7 +121,7 @@ static void PrintTRVPState(const TRVPState_t *state, float pedalCmd)
     console_print("TRVP State:\n");
     console_print("  Pedal command: %ld (0.1 %%)\n", (long)(pedalCmd * 10.0f));
     console_print("  Brake Pedal Pressed: %s\n", state->brakePedalPressed ? "Yes" : "No");
-    console_print("  Speed: %lu mm/s\n", (unsigned long)state->speed);
+    console_print("  Speed: %ld mm/s\n", (long)state->speed);
     for (int i = 0; i < WHEEL_COUNT; i++)
     {
         console_print("  Wheel %d Speed: %ld, Time Status: %d\n", i, (long)state->wheelSpeeds[i].data, state->wheelSpeeds[i].timeStatus);

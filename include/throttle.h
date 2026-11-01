@@ -12,7 +12,7 @@ int32_t AppsClamp(int32_t raw, int potIdx);
 float NormalizeThrottle(int potval, int potIdx);
 
 // Calcul de la consigne, en % (appeles par GetUserThrottleCommand() et ProcessThrottle(), dans utils.c)
-float CalcThrottle(float potnom, int speed, bool brake);
+float CalcThrottle(float potnom, int32_t speed, bool brake);
 float RampThrottle(float potnom, float rampPerS, uint32_t elapsedMs);
 bool TemperatureDerate(int temp, int tempMax, float *finalSpnt);
 void UdcLimitCommand(float *finalSpnt, float udc);

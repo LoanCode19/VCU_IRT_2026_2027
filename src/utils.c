@@ -42,7 +42,7 @@ void ResetThrottleState(void)
     sBrakeThrottleLatched = false;
 }
 
-float GetUserThrottleCommand(const dataMessage_t *pot1val, const dataMessage_t *pot2val, int speed, bool brake)
+float GetUserThrottleCommand(const dataMessage_t *pot1val, const dataMessage_t *pot2val, int32_t speed, bool brake)
 {
     if (pot1val == NULL || pot2val == NULL)
     {
@@ -167,12 +167,12 @@ static void sort4(int32_t v[4], int n)
 }
 
 // Vitesse du vehicule a partir des roues valides, en mm/s (D7)
-int calculateSpeed(dataMessage_t wheelSpeeds[4], int wheelCount)
+int32_t calculateSpeed(dataMessage_t wheelSpeeds[4], int wheelCount)
 {
 
     // Simple average of the four wheel speeds
     int32_t selectedValues[4];
-    uint32_t speed = 0;
+    int32_t speed = 0;
     int validCount = 0;
 
     for (int i = 0; i < wheelCount; ++i)
@@ -194,8 +194,8 @@ int calculateSpeed(dataMessage_t wheelSpeeds[4], int wheelCount)
         break;
     case 3:
     {
-        int d01 = ABS(selectedValues[0] - selectedValues[1]);
-        int d12 = ABS(selectedValues[1] - selectedValues[2]);
+        int32_t d01 = ABS(selectedValues[0] - selectedValues[1]);
+        int32_t d12 = ABS(selectedValues[1] - selectedValues[2]);
 
         if (d01 < WHEEL_MAX_DIFF_MMS && d12 < WHEEL_MAX_DIFF_MMS)
         {
