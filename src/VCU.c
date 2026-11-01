@@ -61,7 +61,7 @@ void MainApp(void)
     static TRVPParams_t TRVPParams = {&xTRVPQueue, &xMainQueue, TaskTRVPId};
     static TaskIHMParam_t ihmParams = {&xIHMQueue, &xDSQueue, TaskIHMId};
     static DigitalSignalsParams_t digitalSignalsParams = {&xDSQueue, TaskDigitalSignalsId};
-    static CoolingParams_t coolingParams = {&xCoolingQueue, TaskCoolingId};
+    static CoolingParams_t coolingParams = {&xCoolingQueue, TaskCoolingId, &xDSQueue};
 
     // Priorite : plus le nombre est grand, plus la tache est prioritaire. Pile en mots de 4 octets.
     // TRVP au-dessus de Main (R9, T28, decide le 01/11/2026, revisable) : reveillees au meme tick, TRVP passe

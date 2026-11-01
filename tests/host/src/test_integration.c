@@ -56,6 +56,23 @@ static void TestIntegration_TaskParameters(void)
              onStack);
 }
 
+// Q9 (T28, decide le 01/11/2026, revisable) : TaskCoolingSystem recoit la queue des sorties en parametre, comme TaskIHM
+static void TestIntegration_CoolingParameters(void)
+{
+    BootMainApp();
+    const CoolingParams_t *params = NULL;
+    for (unsigned i = 0; i < uxTestCreatedTaskCount(); i++)
+    {
+        if (pxTestCreatedTask(i)->function == TaskCoolingSystem)
+        {
+            params = (const CoolingParams_t *)pxTestCreatedTask(i)->parameters;
+        }
+    }
+    bool ok = (params != NULL) && (params->xDSQueue == &xDSQueue) && (params->xCoolingQueue == &xCoolingQueue);
+    vt_check("Q9a", "-", ok, "parametres de TaskCoolingSystem : queue des sorties %s (attendu &xDSQueue)",
+             (params == NULL) ? "tache absente" : ((params->xDSQueue == &xDSQueue) ? "&xDSQueue" : "autre ou NULL"));
+}
+
 static void TestIntegration_AllTasksCreated(void)
 {
     static const struct
@@ -142,6 +159,7 @@ int main(void)
 
     TestIntegration_Queues();
     TestIntegration_TaskParameters();
+    TestIntegration_CoolingParameters();
     TestIntegration_AllTasksCreated();
     TestIntegration_Priorities();
 

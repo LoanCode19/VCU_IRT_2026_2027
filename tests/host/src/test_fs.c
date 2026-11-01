@@ -326,7 +326,7 @@ static bool CoolingFansWhenCold(int32_t tsActive, TickType_t tsTimestamp)
 {
     Setup();
     QueueHandle_t coolingQueue = xQueueCreate(8U, sizeof(dataMessage_t));
-    CoolingParams_t coolingParams = {&coolingQueue, TaskCoolingId};
+    CoolingParams_t coolingParams = {&coolingQueue, TaskCoolingId, &xDSQueue};
     Push(coolingQueue, motor_tempId, 20, T_NOW);
     Push(coolingQueue, inverter_tempId, 20, T_NOW);
     Push(coolingQueue, tsActiveId, tsActive, tsTimestamp);

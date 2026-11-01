@@ -198,7 +198,7 @@ static void TestWatchdog_OutputTasksWithoutMessages(void)
     Setup();
     xDSQueue = xQueueCreate(10, sizeof(DigitalOrder_t));
     xCoolingQueue = xQueueCreate(10, sizeof(dataMessage_t));
-    sCoolingParams = (CoolingParams_t){&xCoolingQueue, TaskCoolingId};
+    sCoolingParams = (CoolingParams_t){&xCoolingQueue, TaskCoolingId, &xDSQueue};
     vTestSetTickCount(TASK_START_TICK);
     vTestSetBlockingTimeoutsBeforeEscape(10);
     RunTaskOnce(TaskCoolingSystem, &sCoolingParams);
