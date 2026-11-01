@@ -59,6 +59,42 @@ static void TestVitesse_NonRegression(void)
     speed = calculateSpeed(twoFar, 4);
     vt_check("NR-2", "-", speed == 0, "2 roues valides incoherentes (12000 / 14000 mm/s) -> %d (attendu 0)", speed);
 
+    // Trois roues valides : celle qui s'ecarte de plus de WHEEL_MAX_DIFF_MMS est laissee de cote
+    const struct
+    {
+        const char *id;
+        int32_t values[3];
+        int expected;
+        const char *what;
+    } three[] = {
+        {"B4f", {10000, 10500, 20000}, 10250, "la plus rapide ecartee"},
+        {"B4g", {5000, 10000, 10500}, 10250, "la plus lente ecartee"},
+        {"B4h", {5000, 10000, 15000}, 0, "toutes trop differentes : vitesse inconnue"},
+    };
+    for (unsigned i = 0; i < sizeof(three) / sizeof(three[0]); i++)
+    {
+        dataMessage_t set[4] = {
+            Wheel(three[i].values[0], STATUS_TIME_OK), Wheel(0, STATUS_TIMEOUT),
+            Wheel(three[i].values[1], STATUS_TIME_OK), Wheel(three[i].values[2], STATUS_TIME_OK)};
+        speed = calculateSpeed(set, 4);
+        vt_check(three[i].id, "-", speed == three[i].expected,
+                 "3 roues valides %ld / %ld / %ld mm/s -> %d (attendu %d : %s)", (long)three[i].values[0],
+                 (long)three[i].values[1], (long)three[i].values[2], speed, three[i].expected, three[i].what);
+    }
+
+    // Une seule roue valide : sa vitesse
+    dataMessage_t one[4] = {
+        Wheel(0, STATUS_TIMEOUT), Wheel(12000, STATUS_TIME_OK), Wheel(0, STATUS_NOT_READY), Wheel(0, STATUS_TIMEOUT)};
+    speed = calculateSpeed(one, 4);
+    vt_check("B4i", "-", speed == 12000, "1 roue valide a 12000 mm/s -> %d (attendu 12000)", speed);
+
+    // Trois roues valides arrivees dans le desordre : elles sont triees avant d'etre comparees
+    dataMessage_t unordered[4] = {
+        Wheel(10600, STATUS_TIME_OK), Wheel(10000, STATUS_TIME_OK), Wheel(9500, STATUS_TIME_OK), Wheel(0, STATUS_TIMEOUT)};
+    speed = calculateSpeed(unordered, 4);
+    vt_check("B4j", "-", speed == 10033,
+             "3 roues valides dans le desordre 10600 / 10000 / 9500 mm/s -> %d (attendu 10033 : moyenne des trois)", speed);
+
     dataMessage_t none[4] = {
         Wheel(5000, STATUS_NOT_READY), Wheel(5000, STATUS_TIMEOUT),
         Wheel(5000, STATUS_TIMEOUT), Wheel(5000, STATUS_NOT_READY)};
@@ -84,6 +120,15 @@ static void TestVitesse_Conversion(void)
     int32_t expected = (int32_t)(20.0 * 3.14159265358979 * (double)WHEEL_RADIUS_M * 1000.0 + 0.5);
     vt_check("D7b", "-", (speed >= expected - 1) && (speed <= expected + 1),
              "roue a 600 tr/min, rayon %.2f m -> %ld mm/s (attendu %ld)", WHEEL_RADIUS_M, (long)speed, (long)expected);
+
+    // Arrondi au plus proche, dans les deux sens : 1 tr/min = 2 pi r / 60 m/s
+    double oneRpm = 2.0 * 3.14159265358979 * (double)WHEEL_RADIUS_M * 1000.0 / 60.0;
+    int32_t up = WheelRawToMmS(1);
+    int32_t down = WheelRawToMmS(-1);
+    int32_t expectedUp = (int32_t)(oneRpm + 0.5);
+    vt_check("D7c", "-", (up == expectedUp) && (down == -expectedUp),
+             "roue a 1 et -1 tr/min (%.2f mm/s) -> %ld et %ld mm/s (attendu %ld et %ld : arrondi au plus proche)",
+             oneRpm, (long)up, (long)down, (long)expectedUp, (long)-expectedUp);
 #endif
 }
 

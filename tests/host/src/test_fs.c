@@ -71,6 +71,27 @@ static void Push(QueueHandle_t queue, MessageIds id, int32_t data, TickType_t ti
     (void)xQueueSend(queue, &msg, 0);
 }
 
+// TRVP une passe : APPS a 40 % dates de appsTimestamp, frein relache et frais. Renvoie la consigne pedale envoyee a
+// Main, -1 si aucune.
+static float TrvpPedalWithApps(TickType_t appsTimestamp)
+{
+    Setup();
+    Push(xTRVPQueue, apps1Id, Raw(0, 40.0f), appsTimestamp);
+    Push(xTRVPQueue, apps2Id, Raw(1, 40.0f), appsTimestamp);
+    Push(xTRVPQueue, brakePressedId, 0, T_NOW);
+    RunTaskOnce(TaskRawValuesProcessing, &sTrvpParams);
+    dataMessage_t out = {0};
+    float pedal = -1.0f;
+    while (xQueueReceive(xMainQueue, &out, 0) == pdPASS)
+    {
+        if (out.id == processedThrottleId)
+        {
+            pedal = FP_TOFLOAT(out.data);
+        }
+    }
+    return pedal;
+}
+
 // Donnees de Main : consigne pedale deja calculee, vitesse, temperatures et tension fraiches
 static void PushMainData(float pedalPercent, TickType_t commandTimestamp)
 {
@@ -188,22 +209,20 @@ static void Test_T11_9(void)
                  idx + 1, detectable, ADC_MAX, potmin[idx] - 200, potmax[idx] + 200);
     }
 
-    // T 11.9.2.d / T 11.9.4 : APPS vieux de plus de 500 ms -> pas de couple (dans TaskRawValuesProcessing)
-    Setup();
-    Push(xTRVPQueue, apps1Id, Raw(0, 40.0f), T_NOW - (SCS_MAX_DELAY + 100U));
-    Push(xTRVPQueue, apps2Id, Raw(1, 40.0f), T_NOW - (SCS_MAX_DELAY + 100U));
-    RunTaskOnce(TaskRawValuesProcessing, &sTrvpParams);
-    dataMessage_t out = {0};
-    float pedal = -1.0f;
-    while (xQueueReceive(xMainQueue, &out, 0) == pdPASS)
+    // T 11.9.2.d / T 11.9.4 : APPS vieux de plus de 500 ms -> pas de couple (dans TaskRawValuesProcessing). Le frein
+    // est envoye relache : absent, il couperait deja la consigne (S2) et le test ne verifierait plus le delai des APPS.
+    float freshPedal = TrvpPedalWithApps(T_NOW);
+    float pedal = TrvpPedalWithApps(T_NOW - (SCS_MAX_DELAY + 100U));
+    if (freshPedal <= 0.0f)
     {
-        if (out.id == processedThrottleId)
-        {
-            pedal = FP_TOFLOAT(out.data);
-        }
+        vt_blocked("FS-10", "T 11.9.4", "TRVP : pas de consigne pedale avec des APPS frais, delai non verifiable");
     }
-    vt_check("FS-10", "T 11.9.4", pedal == 0.0f,
-             "TRVP : APPS recus il y a 600 ms -> consigne pedale %.1f %% (attendu 0)", pedal);
+    else
+    {
+        vt_check("FS-10", "T 11.9.4", pedal == 0.0f,
+                 "TRVP : APPS recus il y a 600 ms -> consigne pedale %.1f %% (attendu 0 ; APPS frais : %.1f %%)", pedal,
+                 freshPedal);
+    }
 
     // T 11.9.4 : consigne vieille de plus de 500 ms -> pas de couple (dans TaskMain)
     float fresh = 0.0f;

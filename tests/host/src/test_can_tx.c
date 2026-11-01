@@ -84,6 +84,11 @@ static void TestCanTx_Encoding(void)
              "consignes de -5 %%, 120 %%, NaN -> %d, %d, %d (attendu 0, 1000, 0 : jamais negative (D3), bornee a 100 %%)",
              RawPercent(&negative), RawPercent(&over), RawPercent(&invalid));
 
+    // Arrondi au dixieme de % le plus proche : 33,37 % -> 333,7 -> 334
+    CanFrame_t rounded = Dti_EncodeRelativeCurrent(33.37f);
+    vt_check("TX-h", "-", RawPercent(&rounded) == 334,
+             "consigne de 33,37 %% -> %d (attendu 334 : arrondi au plus proche, pas tronque)", RawPercent(&rounded));
+
     CanFrame_t on = Dti_EncodeDriveEnable(true);
     CanFrame_t off = Dti_EncodeDriveEnable(false);
     vt_check("TX-c", "-",
@@ -91,6 +96,18 @@ static void TestCanTx_Encoding(void)
                  (off.id == CAN_ID_DTI_DRIVE_ENABLE) && (off.data[0] == 0U),
              "drive enable vrai / faux -> ID 0x%03lX, octet 0 = %u / %u (attendu 0x184, 1 / 0)", (unsigned long)on.id,
              (unsigned)on.data[0], (unsigned)off.data[0]);
+}
+
+// Un message que TaskCanTx ne connait pas ne part jamais vers l'onduleur
+static void TestCanTx_UnknownMessage(void)
+{
+    Setup();
+    dataMessage_t msg = {.id = calculatedSpeedId, .data = FP_FROMFLT(80.0f), .timestamp = 100U};
+    (void)xQueueSend(xCanTxQueue, &msg, 0);
+    RunTaskOnce(TaskCanTx, &sCanTxParams);
+    unsigned sent = uxTestCanTxCount();
+    vt_check("TX-i", "-", sent == 0U, "message d'un autre identifiant (vitesse) dans la queue de CanTx -> %u trame(s) "
+             "emise(s) (attendu 0 : ignore)", sent);
 }
 
 static void TestCanTx_SendFailure(void)
@@ -113,6 +130,7 @@ int main(void)
     TestCanTx_Encoding();
     TestCanTx_TorqueFrame();
     TestCanTx_SendFailure();
+    TestCanTx_UnknownMessage();
 
     return vt_end();
 }

@@ -17,6 +17,10 @@
 #include "TaskWDG.h"
 #include "TaskDigitalSignals.h"
 #include "TaskCoolingSystem.h"
+#include "TaskCanTx.h"
+#include "TaskIHM.h"
+#include "TaskMain.h"
+#include "TaskRawValuesProcessing.h"
 #include "test_app.h"
 #include "vcu_test.h"
 
@@ -30,6 +34,10 @@ static TickType_t sFeedUntil = 0;
 static CanRxParams_t sCanRxParams;
 static DigitalSignalsParams_t sDigitalParams;
 static CoolingParams_t sCoolingParams;
+static CanTxParam_t sCanTxParams;
+static TaskIHMParam_t sIhmParams;
+static TRVPParams_t sTrvpParams;
+static MainParams_t sMainParams;
 
 void test_refreshIWDG(void)
 {
@@ -83,6 +91,36 @@ static void TestWatchdog_TableSize(void)
     vt_check("W3a", "-", MAX_TASKS >= TASK_COUNT,
              "MAX_TASKS = %d pour %d taches declarees dans TaskId (attendu >= %d)",
              MAX_TASKS, TASK_COUNT, TASK_COUNT);
+}
+
+// Toutes les taches de TaskId sont surveillees au demarrage (wdgRegisterTasks, VCU.c), et un numero de tache hors du
+// tableau n'ecrit pas a cote
+static void TestWatchdog_Registration(void)
+{
+    memset(wdgTimeoutTable, 0, sizeof(WDGTimoutTable));
+    wdgRegisterTasks();
+    unsigned missing = 0U;
+    for (int i = 0; i < TASK_COUNT; i++)
+    {
+        if (wdgTimeoutTable[i] == 0U)
+        {
+            missing++;
+            vt_note("tache %d non enregistree", i);
+        }
+    }
+    vt_check("W3c", "-", missing == 0U,
+             "wdgRegisterTasks() -> %u tache(s) de TaskId sans delai de watchdog (attendu 0 : toutes surveillees)",
+             missing);
+
+    struct
+    {
+        WDGTimoutTable table;
+        TickType_t after; // juste apres le tableau
+    } guarded = {{0}, 0xA5A5A5A5u};
+    wdgRegister((TaskId)MAX_TASKS, 123U, guarded.table);
+    vt_check("W3b", "-", guarded.after == 0xA5A5A5A5u,
+             "wdgRegister() avec le numero de tache %d (hors du tableau) -> case suivante %s (attendu intacte)",
+             MAX_TASKS, (guarded.after == 0xA5A5A5A5u) ? "intacte" : "ecrasee");
 }
 
 static void TestWatchdog_RefreshWhenHealthy(void)
@@ -154,6 +192,42 @@ static void TestWatchdog_OutputTasksWithoutMessages(void)
     fed = FedSince(TaskCoolingId, TASK_START_TICK);
     vt_check("W5b", "-", fed, "aucune temperature -> TaskCoolingSystem donne signe de vie : %s (attendu oui)",
              fed ? "oui" : "non");
+
+    Setup();
+    xCanTxQueue = xQueueCreate(10, sizeof(dataMessage_t));
+    sCanTxParams = (CanTxParam_t){&xCanTxQueue, TaskCanTxId};
+    vTestSetTickCount(TASK_START_TICK);
+    vTestSetBlockingTimeoutsBeforeEscape(10);
+    RunTaskOnce(TaskCanTx, &sCanTxParams);
+    vTestSetBlockingTimeoutsBeforeEscape(0);
+    fed = FedSince(TaskCanTxId, TASK_START_TICK);
+    vt_check("W5c", "-", fed, "aucune consigne -> TaskCanTx donne signe de vie : %s (attendu oui)", fed ? "oui" : "non");
+
+    Setup();
+    xIHMQueue = xQueueCreate(10, sizeof(IHMOrder_t));
+    xDSQueue = xQueueCreate(10, sizeof(DigitalOrder_t));
+    sIhmParams = (TaskIHMParam_t){&xIHMQueue, &xDSQueue, TaskIHMId};
+    vTestSetTickCount(TASK_START_TICK);
+    vTestSetBlockingTimeoutsBeforeEscape(10);
+    RunTaskOnce(TaskIHM, &sIhmParams);
+    vTestSetBlockingTimeoutsBeforeEscape(0);
+    fed = FedSince(TaskIHMId, TASK_START_TICK);
+    vt_check("W5d", "-", fed, "aucun ordre -> TaskIHM donne signe de vie : %s (attendu oui)", fed ? "oui" : "non");
+
+    // Les deux taches periodiques donnent signe de vie a chaque periode, meme sans aucun message
+    Setup();
+    xIHMQueue = xQueueCreate(10, sizeof(IHMOrder_t));
+    xCanTxQueue = xQueueCreate(10, sizeof(dataMessage_t));
+    sTrvpParams = (TRVPParams_t){&xTRVPQueue, &xMainQueue, TaskTRVPId};
+    sMainParams = (MainParams_t){&xMainQueue, &xTRVPQueue, &xIHMQueue, &xCanTxQueue, TaskMainId};
+    vTestSetTickCount(TASK_START_TICK);
+    RunTaskOnce(TaskRawValuesProcessing, &sTrvpParams);
+    RunTaskOnce(TaskMain, &sMainParams);
+    bool trvpFed = FedSince(TaskTRVPId, TASK_START_TICK);
+    bool mainFed = FedSince(TaskMainId, TASK_START_TICK);
+    vt_check("W5e", "-", trvpFed && mainFed,
+             "une periode sans message -> signe de vie de TRVP : %s, de TaskMain : %s (attendu oui, oui)",
+             trvpFed ? "oui" : "non", mainFed ? "oui" : "non");
 }
 
 // Avec du trafic CAN, les taches rapides donnent signe de vie a chaque trame : 3 fois chacune par
@@ -196,6 +270,7 @@ int main(void)
     vt_begin("Watchdog");
 
     TestWatchdog_TableSize();
+    TestWatchdog_Registration();
     TestWatchdog_RefreshWhenHealthy();
     TestWatchdog_NoRefreshWhenStalled();
     TestWatchdog_CanRxWithoutTraffic();
