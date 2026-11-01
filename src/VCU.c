@@ -126,8 +126,10 @@ void initThrottleValues()
     throtRampMaxPerS = 500.0f; // %/s au-dessus
     throtRampSpeedMs = 41.9f;  // m/s (T18, decide le 27/10/2026, revisable : les 2000 tr/min d'avant avec D7)
 
-    udcmin = 250.0f;  // Min DC bus voltage (V)
+    udcmin = 250.0f;  // Min DC bus voltage (V) : provisoire, batterie inconnue (T11)
     udcmax = 410.0f;  // Max DC bus voltage (V)
+    // Tension basse (S8, T11, decide le 27/10/2026, revisable) : 100 % de couple a udcmin + 20 V, 0 a udcmin
+    udcDerateMarginV = 20.0f;
     idcmin = -400.0f; // Min DC current (regen limit, A)
     idcmax = 400.0f;  // Max DC current (drive limit, A)
 
@@ -138,4 +140,6 @@ void initThrottleValues()
 
     motorTempMax = 100.0f;
     inverterTempMax = 90.0f;
+
+    ResetThrottleState(); // S9 (T10) : pas de verrou frein + accelerateur au demarrage
 }

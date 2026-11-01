@@ -147,7 +147,8 @@ static void TestApps_PedalReleased(void)
 }
 
 // Verification frein/accelerateur : plus exigee par FS 2026 (le BSPD materiel couvre ce cas),
-// mais recommandee pour ne pas declencher le BSPD.
+// mais recommandee pour ne pas declencher le BSPD (T10, decide le 27/10/2026 : verrou au-dessus de 25 %, relache
+// sous 5 %).
 static void TestApps_BrakePlausibility(void)
 {
     float torque;
@@ -165,6 +166,13 @@ static void TestApps_BrakePlausibility(void)
     torque = Command(Apps(0, 20.0f, STATUS_TIME_OK), Apps(1, 20.0f, STATUS_TIME_OK), 0, false);
     vt_check("S9c", "recommande", torque > 10.0f,
              "APPS repasse sous 5 %% puis 20 %% -> couple %.1f %% (attendu ~18, deverrouille)", torque);
+
+    // S9d : sous 25 %, frein et pedale ensemble ne verrouillent rien : le couple revient des que le frein est relache
+    (void)Command(Apps(0, 20.0f, STATUS_TIME_OK), Apps(1, 20.0f, STATUS_TIME_OK), 0, true);
+    torque = Command(Apps(0, 20.0f, STATUS_TIME_OK), Apps(1, 20.0f, STATUS_TIME_OK), 0, false);
+    vt_check("S9d", "recommande", torque > 10.0f,
+             "frein + APPS 20 %% (sous 25 %%), puis frein relache -> couple %.1f %% (attendu ~18 : pas de verrou)",
+             torque);
 }
 
 int main(void)

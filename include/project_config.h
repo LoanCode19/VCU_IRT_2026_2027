@@ -39,6 +39,12 @@
 #define APPS_FAULT_CONFIRM_MS 100U
 #define APPS_FAULT_RELEASE_PERCENT 5.0f
 
+// Frein + accelerateur (S9, T10, decide le 27/10/2026, revisable) : frein appuye avec la pedale au-dessus de 25 %
+// -> couple 0, garde jusqu'a ce que la pedale repasse sous 5 %. Plus exige par FS 2026, mais evite de declencher
+// le BSPD (freinage fort avec plus de 5 kW), qui couperait tout le TS.
+#define BRAKE_THROTTLE_LATCH_PERCENT 25.0f
+#define BRAKE_THROTTLE_RELEASE_PERCENT 5.0f
+
 // Delai de chaque donnee dans Main (S5, T2, decide le 27/10/2026, revisable ; a reprendre du DBC) :
 // au-dela, la donnee est perimee et le couple coupe. Avec les 200 ms de TRVP pour les APPS, la chaine
 // reste sous les 500 ms de T 11.9.4.
