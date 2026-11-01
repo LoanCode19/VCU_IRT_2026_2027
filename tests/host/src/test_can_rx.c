@@ -70,6 +70,14 @@ static bool PushDtiVoltage(int32_t volts)
     return PushFrame(CAN_ID_DTI_ERPM_VOLTAGE, 8U, data);
 }
 
+// Etat du vehicule (trame provisoire 0x012, T19) : un octet par signal ; seul l'octet index porte value
+static bool PushVehicleState(unsigned index, int32_t value)
+{
+    uint8_t data[8] = {0};
+    data[index] = (uint8_t)value;
+    return PushFrame(CAN_ID_VEHICLE_STATE, 4U, data);
+}
+
 // Un signal du VCU, dans la trame qui le transporte sur le bus
 static bool PushSignal(MessageIds appId, int32_t value)
 {
@@ -93,6 +101,14 @@ static bool PushSignal(MessageIds appId, int32_t value)
         return PushDtiTemperatures(0, value);
     case voltageId:
         return PushDtiVoltage(value);
+    case tsActiveId:
+        return PushVehicleState(0U, value);
+    case sdcClosedId:
+        return PushVehicleState(1U, value);
+    case brakePressedId:
+        return PushVehicleState(2U, value);
+    case r2dSwitchId:
+        return PushVehicleState(3U, value);
     default:
         return false;
     }
@@ -164,33 +180,50 @@ static void TestCanRx_Timestamp(void)
              "trame recue a t=1234 ms -> timestamp du message %lu (attendu 1234)", (unsigned long)msg.timestamp);
 }
 
+#define TO_TRVP 1U
+#define TO_MAIN 2U
+#define TO_COOLING 4U
+
 static void TestCanRx_Routing(void)
 {
     static const struct
     {
         MessageIds appId;
-        bool toTrvp;
+        unsigned to; // taches destinataires
         const char *name;
     } routes[] = {
-        {wheelFRId, true, "roue FR"}, {wheelFLId, true, "roue FL"}, {wheelRRId, true, "roue RR"},
-        {wheelRLId, true, "roue RL"}, {apps1Id, true, "APPS1"}, {apps2Id, true, "APPS2"},
-        {motor_tempId, false, "temperature moteur"}, {inverter_tempId, false, "temperature onduleur"},
-        {voltageId, false, "tension"}};
+        {wheelFRId, TO_TRVP, "roue FR"}, {wheelFLId, TO_TRVP, "roue FL"}, {wheelRRId, TO_TRVP, "roue RR"},
+        {wheelRLId, TO_TRVP, "roue RL"}, {apps1Id, TO_TRVP, "APPS1"}, {apps2Id, TO_TRVP, "APPS2"},
+        {motor_tempId, TO_MAIN | TO_COOLING, "temperature moteur"},
+        {inverter_tempId, TO_MAIN | TO_COOLING, "temperature onduleur"}, {voltageId, TO_MAIN, "tension"},
+        // Etat du vehicule (T19) : le frein sert a TRVP (S2) et a la sequence R2D, le TS au refroidissement (S12)
+        {tsActiveId, TO_MAIN | TO_COOLING, "TS actif"}, {sdcClosedId, TO_MAIN, "SDC ferme"},
+        {brakePressedId, TO_TRVP | TO_MAIN, "frein"}, {r2dSwitchId, TO_MAIN, "interrupteur R2D"}};
+    const unsigned count = sizeof(routes) / sizeof(routes[0]);
 
     bool allOk = true;
-    for (unsigned i = 0; i < sizeof(routes) / sizeof(routes[0]); i++)
+    for (unsigned i = 0; i < count; i++)
     {
         Setup(100U);
         (void)PushSignal(routes[i].appId, 42);
         RunCanRx();
-        QueueHandle_t expected = routes[i].toTrvp ? xTRVPQueue : xMainQueue;
-        if (!HasMessage(expected, routes[i].appId, 42))
+        const struct
         {
-            allOk = false;
-            vt_note("%s mal route", routes[i].name);
+            unsigned flag;
+            QueueHandle_t queue;
+            const char *task;
+        } dests[] = {{TO_TRVP, xTRVPQueue, "TRVP"}, {TO_MAIN, xMainQueue, "Main"},
+                     {TO_COOLING, xCoolingQueue, "refroidissement"}};
+        for (unsigned d = 0; d < sizeof(dests) / sizeof(dests[0]); d++)
+        {
+            if (((routes[i].to & dests[d].flag) != 0U) && !HasMessage(dests[d].queue, routes[i].appId, 42))
+            {
+                allOk = false;
+                vt_note("%s : rien vers %s", routes[i].name, dests[d].task);
+            }
         }
     }
-    vt_check("NR-2", "-", allOk, "9 signaux recus routes vers la bonne tache avec le bon identifiant");
+    vt_check("NR-2", "-", allOk, "%u signaux recus routes vers la bonne tache avec le bon identifiant", count);
 }
 
 static void TestCanRx_Decoding(void)

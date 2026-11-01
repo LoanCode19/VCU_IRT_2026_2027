@@ -60,6 +60,14 @@ void EmuCan_Init(void);
 uint32_t EmuCan_TxCount(uint32_t stdId);
 bool EmuCan_LastTx(uint32_t stdId, CanFrame_t *frame);
 
+// Etat du vehicule (trame provisoire 0x012, T19) : TS actif, SDC ferme, frein, interrupteur R2D, un octet chacun
+// (0 ou 1), toutes les periodMs.
+#define EMU_VEHICLE_PERIOD_MS 10U
+void EmuVehicle_SetState(bool tsActive, bool sdcClosed, bool brake, bool r2dSwitch, uint32_t periodMs);
+// Sequence Ready-to-Drive par le bus (S3, T8) : TS actif et interrupteur sur OFF, puis sur ON pendant un
+// freinage, puis frein relache. A faire pedale relachee : frein et pedale ensemble verrouillent le couple (T10).
+void EmuVehicle_EnterR2D(void);
+
 // Onduleur simule : ses trames periodiques, dans le format que le VCU attend
 void EmuDti_SetTemperatures(int32_t motorC, int32_t inverterC, uint32_t periodMs);
 void EmuDti_SetVoltage(int32_t volts, uint32_t periodMs);

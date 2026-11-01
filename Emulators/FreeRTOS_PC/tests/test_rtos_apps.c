@@ -26,9 +26,10 @@ static void SetApps(float percent1, float percent2)
     (void)EmuCan_SendNow(CAN_ID_APPS2, AppsRaw(1, percent2));
 }
 
-// Capteurs, roues et onduleur simules, APPS coherents a 40 %
+// Sequence R2D pedale relachee, puis capteurs, roues et onduleur simules, APPS coherents a 40 %
 static void StartCar(void)
 {
+    EmuVehicle_EnterR2D();
     EmuCan_SetPeriodic(CAN_ID_APPS1, 10U, AppsRaw(0, 40.0f));
     EmuCan_SetPeriodic(CAN_ID_APPS2, 10U, AppsRaw(1, 40.0f));
     EmuCan_SetPeriodic(CAN_ID_WHEEL_FR, 10U, 0);

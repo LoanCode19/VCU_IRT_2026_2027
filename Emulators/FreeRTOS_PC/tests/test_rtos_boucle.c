@@ -137,6 +137,7 @@ int EmuTest_Run(void)
 {
     vt_begin("Emulateur FreeRTOS : boucle de controle");
 
+    EmuVehicle_EnterR2D(); // pedale relachee : la rampe est mesuree en R2D
     TestBoucle_PeriodicCommand();
     TestBoucle_RampVsTraffic();
 

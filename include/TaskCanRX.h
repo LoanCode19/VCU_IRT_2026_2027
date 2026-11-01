@@ -27,7 +27,8 @@ typedef enum
 {
     CAN_TO_TRVP,             // capteurs : TaskRawValuesProcessing
     CAN_TO_MAIN,             // TaskMain
-    CAN_TO_MAIN_AND_COOLING, // TaskMain et TaskCoolingSystem (temperatures)
+    CAN_TO_MAIN_AND_COOLING, // TaskMain et TaskCoolingSystem (temperatures, TS actif)
+    CAN_TO_TRVP_AND_MAIN,    // TRVP et TaskMain (frein : couple coupe et sequence R2D)
 } CanRoute_t;
 
 // Une ligne de la table de decodage : un signal dans une trame standard

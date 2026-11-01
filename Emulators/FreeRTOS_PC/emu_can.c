@@ -259,6 +259,26 @@ void EmuDti_SetVoltage(int32_t volts, uint32_t periodMs)
     EmuCan_SetPeriodicFrame(CAN_ID_DTI_ERPM_VOLTAGE, periodMs, 8U, data);
 }
 
+void EmuVehicle_SetState(bool tsActive, bool sdcClosed, bool brake, bool r2dSwitch, uint32_t periodMs)
+{
+    uint8_t data[8] = {0};
+    data[0] = tsActive ? 1U : 0U;
+    data[1] = sdcClosed ? 1U : 0U;
+    data[2] = brake ? 1U : 0U;
+    data[3] = r2dSwitch ? 1U : 0U;
+    EmuCan_SetPeriodicFrame(CAN_ID_VEHICLE_STATE, periodMs, 4U, data);
+}
+
+void EmuVehicle_EnterR2D(void)
+{
+    EmuVehicle_SetState(true, true, false, false, EMU_VEHICLE_PERIOD_MS);
+    EmuWaitMs(3U * EMU_VEHICLE_PERIOD_MS);
+    EmuVehicle_SetState(true, true, true, true, EMU_VEHICLE_PERIOD_MS);
+    EmuWaitMs(3U * EMU_VEHICLE_PERIOD_MS);
+    EmuVehicle_SetState(true, true, false, true, EMU_VEHICLE_PERIOD_MS);
+    EmuWaitMs(2U * EMU_VEHICLE_PERIOD_MS);
+}
+
 // Toutes les 1 ms : envoie les trames des capteurs simules arrivees a echeance
 static void EmuCan_BusTask(void *pvParameters)
 {
