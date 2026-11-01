@@ -29,42 +29,40 @@
  *----------------------------------------------------------*/
 
 #include <stdarg.h>
+#include <stdbool.h>
 #include <stdio.h>
 
-#include <FreeRTOS.h>
-#include <semphr.h>
+#include "FreeRTOS.h"
+#include "semphr.h"
+#include "task.h"
 
-SemaphoreHandle_t xStdioMutex;
-StaticSemaphore_t xStdioMutexBuffer;
+#include "console.h"
 
-#ifdef LINUX
+// R7 : un mutex, sur la carte comme sur PC, pour que deux taches n'ecrivent jamais en meme temps. Avant le
+// demarrage du scheduler, une seule tache tourne : pas de mutex. Jamais d'appel depuis une interruption (attente).
+static SemaphoreHandle_t sConsoleMutex = NULL;
+static StaticSemaphore_t sConsoleMutexBuffer;
+
 void console_init(void)
 {
-    xStdioMutex = xSemaphoreCreateMutexStatic(&xStdioMutexBuffer);
+    if (sConsoleMutex == NULL) // appelee par MainApp() : un deuxieme appel est sans effet
+    {
+        sConsoleMutex = xSemaphoreCreateMutexStatic(&sConsoleMutexBuffer);
+    }
 }
 
-void console_print(const char *fmt,
-                   ...)
+void console_print(const char *fmt, ...)
 {
-    va_list vargs;
+    bool locked = (sConsoleMutex != NULL) && (xTaskGetSchedulerState() == taskSCHEDULER_RUNNING) &&
+                  (xSemaphoreTake(sConsoleMutex, portMAX_DELAY) == pdTRUE);
 
-    va_start(vargs, fmt);
-
-    xSemaphoreTake(xStdioMutex, portMAX_DELAY);
-
-    vprintf(fmt, vargs);
-
-    xSemaphoreGive(xStdioMutex);
-
-    va_end(vargs);
-}
-#else
-void console_print(const char *fmt,
-                   ...)
-{
     va_list vargs;
     va_start(vargs, fmt);
     vprintf(fmt, vargs);
     va_end(vargs);
+
+    if (locked)
+    {
+        xSemaphoreGive(sConsoleMutex);
+    }
 }
-#endif

@@ -1,6 +1,6 @@
 #ifdef USE_WDG
 #include "FreeRTOS.h"
-#include "queue.h"
+#include "task.h"
 
 #include "structs.h"
 #include "project_config.h"
@@ -10,11 +10,6 @@
 #include "utils.h"
 
 #include "stm32Interface.h"
-
-#include <stdio.h>
-#include <stdlib.h>
-#include <stdint.h>
-#include <semphr.h>
 
 WDGTimoutTable wdgTimeoutTable;
 
@@ -29,7 +24,6 @@ void TaskWDG(void *pvParameters)
     while (1)
     {
         vTaskDelayUntil(&timeNow, WDG_PERIOD);
-        console_print("------(B)WDG------\n");
 
         if (checkTasksTimeout())
         {
@@ -40,7 +34,6 @@ void TaskWDG(void *pvParameters)
             // Une tache est en retard : plus de rafraichissement, l'IWDG va redemarrer la carte
             console_print("WDG: tache en retard\n");
         }
-        console_print("------(E)WDG------\n\n");
     }
 }
 

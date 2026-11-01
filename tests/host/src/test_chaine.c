@@ -34,6 +34,8 @@ typedef struct
     TickType_t voltageTimestamp;
     int32_t wheelRaw; // valeur brute des 4 capteurs de roue
     bool withoutR2D;  // TS actif, mais pas de sequence R2D (S3a)
+    bool temperaturesNeverSent; // tension envoyee, temperatures jamais (S5f)
+    int oldTemperature;         // 1 : moteur seul vieux de 2500 ms, 2 : onduleur seul (S5g)
 } ChainInputs_t;
 
 static void Setup(void)
@@ -67,10 +69,13 @@ static bool RunChain(ChainInputs_t in, float *torque)
     Push(xTRVPQueue, wheelRRId, in.wheelRaw, T_NOW);
     Push(xTRVPQueue, wheelRLId, in.wheelRaw, T_NOW);
     Push(xTRVPQueue, brakePressedId, 0, T_NOW); // frein relache
+    if (in.sendTemperatures && !in.temperaturesNeverSent)
+    {
+        Push(xMainQueue, motor_tempId, 40, (in.oldTemperature == 1) ? T_NOW - 2500U : in.temperatureTimestamp);
+        Push(xMainQueue, inverter_tempId, 40, (in.oldTemperature == 2) ? T_NOW - 2500U : in.temperatureTimestamp);
+    }
     if (in.sendTemperatures)
     {
-        Push(xMainQueue, motor_tempId, 40, in.temperatureTimestamp);
-        Push(xMainQueue, inverter_tempId, 40, in.temperatureTimestamp);
         Push(xMainQueue, voltageId, 350, in.voltageTimestamp);
     }
 
@@ -362,6 +367,8 @@ int main(void)
         vt_blocked("S5c", "T 11.9.2.d", "chaine sans couple (B2a) : coupure sans temperature non verifiable");
         vt_blocked("S5d", "-", "chaine sans couple (B2a) : voyant defaut non verifiable");
         vt_blocked("S5e", "T 11.9.4", "chaine sans couple (B2a) : coupure sur temperature perimee non verifiable");
+        vt_blocked("S5f", "T 11.9.2.d", "chaine sans couple (B2a) : coupure sans temperature non verifiable");
+        vt_blocked("S5g", "T 11.9.4", "chaine sans couple (B2a) : coupure sur une temperature perimee non verifiable");
         vt_blocked("S3a", "EV 4.11.7", "chaine sans couple (B2a) : absence de R2D non verifiable");
         vt_blocked("B3f", "-", "chaine sans couple (B2a) : limiteur de vitesse non verifiable");
         return vt_end();
@@ -379,6 +386,22 @@ int main(void)
     sent = RunChain((ChainInputs_t){40.0f, false, 0, 0}, &torque);
     vt_check("S5c", "T 11.9.2.d", !sent || torque <= 0.0f,
              "temperatures et tension jamais recues -> consigne %.1f %% (attendu 0)", torque);
+
+    // T1 : des temperatures jamais recues coupent le couple, meme avec une tension fraiche. S5c ne le montre pas a
+    // lui seul : la tension jamais recue vaut 0 V, et la reduction sur tension basse (T11) coupe deja le couple.
+    sent = RunChain((ChainInputs_t){40.0f, true, T_NOW, T_NOW, 0, false, true}, &torque);
+    vt_check("S5f", "T 11.9.2.d", !sent || torque <= 0.0f,
+             "temperatures jamais recues, tension fraiche -> consigne %.1f %% (attendu 0, T1)", torque);
+
+    // T1 : chaque temperature compte seule. Une seule perimee, l'autre et la tension fraiches -> couple coupe.
+    float motorOld = 0.0f;
+    float inverterOld = 0.0f;
+    bool sentMotorOld = RunChain((ChainInputs_t){40.0f, true, T_NOW, T_NOW, 0, false, false, 1}, &motorOld);
+    bool sentInverterOld = RunChain((ChainInputs_t){40.0f, true, T_NOW, T_NOW, 0, false, false, 2}, &inverterOld);
+    vt_check("S5g", "T 11.9.4", (!sentMotorOld || motorOld <= 0.0f) && (!sentInverterOld || inverterOld <= 0.0f),
+             "temperature moteur seule vieille de 2500 ms -> consigne %.1f %% ; onduleur seul -> %.1f %% (attendu 0, puis "
+             "0, T1)",
+             motorOld, inverterOld);
     int missingLight = FaultLightOrder();
     (void)RunChain((ChainInputs_t){40.0f, true, T_NOW, T_NOW}, &torque);
     int freshLight = FaultLightOrder();

@@ -23,12 +23,12 @@
 #define SIGN(a)  ((a) < 0? -1 : 1)
 #define MIN(a,b) ((a) < (b)?(a):(b))
 #define MAX(a,b) ((a) > (b)?(a):(b))
-#define RAMPUP(current, target, rate) ((target < current || (current + rate) > target) ? target : current + rate)
-#define RAMPDOWN(current, target, rate) ((target > current || (current - rate) < target) ? target : current - rate)
+#define RAMPUP(current, target, rate) (((target) < (current) || ((current) + (rate)) > (target)) ? (target) : (current) + (rate))
+#define RAMPDOWN(current, target, rate) (((target) > (current) || ((current) - (rate)) < (target)) ? (target) : (current) - (rate))
 #define IIRFILTER(l,n,c) (((n) + ((l) << (c)) - (l)) >> (c))
 #define IIRFILTERF(l,n,c) (((n) + (l) * ((1 << (c)) - 1)) / (1 << (c)))
 #define MEDIAN3(a,b,c)  ((a) > (b) ? ((b) > (c) ? (b) : ((a) > (c) ? (c) : (a))) \
                                    : ((a) > (c) ? (a) : ((b) > (c) ? (c) : (b))))
-#define CHK_BIPOLAR_OFS(ofs) ((ofs < (2048 - 512)) || (ofs > (2048 + 512)))
+#define CHK_BIPOLAR_OFS(ofs) (((ofs) < (2048 - 512)) || ((ofs) > (2048 + 512)))
 
 #endif // MY_MATH_H_INCLUDED

@@ -1,6 +1,10 @@
 #ifndef MAIN_H
 #define MAIN_H
 
+#include "FreeRTOS.h"
+#include "queue.h"
+#include "structs.h"
+
 void TaskMain(void *pvParameters);
 
 typedef struct
@@ -28,11 +32,6 @@ typedef struct
     dataMessage_t r2dSwitch;
 
     dataMessage_t appsFault; // faute APPS confirmee, envoyee par TRVP (S1, D2)
-
-    TickType_t lastCallTimeStmp;
-
-    bool direction; // true for forward, false for reverse
-
 } MainState_t;
 
-#endif
+#endif // MAIN_H

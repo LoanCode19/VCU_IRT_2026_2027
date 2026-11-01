@@ -1,17 +1,13 @@
-
 #include <stdbool.h>
-#include "throttle.h"
-#include "structs.h"
-#include "utils.h"
-#include "my_math.h"
-#include "console.h"
-#include "project_config.h"
 
 #include "FreeRTOS.h"
 
-#define MAX_APPS_TIMEOUT 200
-#define MAX_WHEEL_TIMEOUT 400
-#define MAX_BREAK_TIMEOUT 150
+#include "console.h"
+#include "my_math.h"
+#include "project_config.h"
+#include "structs.h"
+#include "throttle.h"
+#include "utils.h"
 
 #if !WHEEL_SENSOR_RAW_IS_RPM
 #error "D7 : WheelRawToMmS() ne sait convertir que des tr/min de roue"
@@ -101,25 +97,16 @@ bool AppsMonitorStep(AppsMonitor_t *monitor, bool implausibleNow, float pedalPer
 
 float ProcessThrottle(float finalSpnt, float speedMs, int motorTemp, int inverterTemp, float voltage, uint32_t elapsedMs)
 {
-    // we claculate messageTimouts here to minimize the probability of a context switch that would make the time_now
-    // not reliable. If Max timouts are big enough, that should not pose any problem.
-    // float limitMsgTimeouts = checkMessageTimeStamps(motorState, globalState, time_now);
-
     float rampPerS = (speedMs < throtRampSpeedMs) ? throtRampPerS : throtRampMaxPerS; // pente de la montee, en %/s
 
     UdcLimitCommand(&finalSpnt, voltage); // S8 (T11) : tension batterie basse
-    // Throttle::IdcLimitCommand(finalSpnt, ABS(Variables::GetFloat(Variables::idc)));
+    // Courant et puissance (S8) : lot 6c, apres D4
     SpeedLimitCommand(&finalSpnt, ABS(speedMs));
 
-    if (TemperatureDerate(motorTemp, motorTempMax, &finalSpnt))
-    {
-        console_print("derating becouse of motor temprature\n");
-    }
-
-    if (TemperatureDerate(inverterTemp, inverterTempMax, &finalSpnt))
-    {
-        console_print("derating because of inverter temprature\n");
-    }
+    // Temperatures : 50 % juste au-dessus du maximum, puis 0. Pas de trace ici (100 appels par seconde) : les
+    // temperatures apparaissent dans celles de Main (T17).
+    (void)TemperatureDerate(motorTemp, motorTempMax, &finalSpnt);
+    (void)TemperatureDerate(inverterTemp, inverterTempMax, &finalSpnt);
 
     // Apres une pause (tache retardee, debogueur), la rampe n'avance que de CONTROL_MAX_ELAPSED_MS (R1)
     finalSpnt = RampThrottle(finalSpnt, rampPerS, MIN(elapsedMs, CONTROL_MAX_ELAPSED_MS));
@@ -139,6 +126,44 @@ int32_t WheelRawToMmS(int32_t raw)
 {
     float mmPerS = (float)raw * 2.0f * 3.14159265f * WHEEL_RADIUS_M * 1000.0f / 60.0f;
     return (int32_t)((mmPerS >= 0.0f) ? (mmPerS + 0.5f) : (mmPerS - 0.5f));
+}
+
+static void swap(int32_t *a, int32_t *b)
+{
+    if (*a > *b)
+    {
+        int32_t tmp = *a;
+        *a = *b;
+        *b = tmp;
+    }
+}
+
+// Trie les n premieres valeurs (n de 0 a 4) dans l'ordre croissant
+static void sort4(int32_t v[4], int n)
+{
+    switch (n)
+    {
+    case 4:
+        swap(&v[0], &v[1]);
+        swap(&v[2], &v[3]);
+        swap(&v[0], &v[2]);
+        swap(&v[1], &v[3]);
+        swap(&v[1], &v[2]);
+        break;
+
+    case 3:
+        swap(&v[0], &v[1]);
+        swap(&v[1], &v[2]);
+        swap(&v[0], &v[1]);
+        break;
+
+    case 2:
+        swap(&v[0], &v[1]);
+        break;
+
+    default: // 0 ou 1 valeur : deja triee
+        break;
+    }
 }
 
 // Vitesse du vehicule a partir des roues valides, en mm/s (D7)
@@ -171,7 +196,6 @@ int calculateSpeed(dataMessage_t wheelSpeeds[4], int wheelCount)
     {
         int d01 = ABS(selectedValues[0] - selectedValues[1]);
         int d12 = ABS(selectedValues[1] - selectedValues[2]);
-        int d02 = ABS(selectedValues[0] - selectedValues[2]);
 
         if (d01 < WHEEL_MAX_DIFF_MMS && d12 < WHEEL_MAX_DIFF_MMS)
         {
@@ -213,11 +237,6 @@ int calculateSpeed(dataMessage_t wheelSpeeds[4], int wheelCount)
     return speed;
 }
 
-bool checkWheelSpeedsInRange(dataMessage_t wheelSpeed)
-{
-    return 1;
-}
-
 /** This function checks the timestamps of the received data messages and updates their time status accordingly.
  *
  * @param dataMsg An array or single data message to check.
@@ -241,33 +260,18 @@ void updateDataTimeStatus(dataMessage_t *dataMsg, int count, int maxDiff, TickTy
     }
 }
 
-void sort4(int32_t v[4], uint8_t n)
+bool dataFresh(dataMessage_t *data, int timeoutMs, TickType_t now)
 {
-    switch (n)
+    updateDataTimeStatus(data, 1, timeoutMs, now);
+    return data->timeStatus == STATUS_TIME_OK;
+}
+
+void SendDataMessage(QueueHandle_t queue, MessageIds id, int32_t data, TickType_t now, uint32_t *lost)
+{
+    dataMessage_t msg = {.id = id, .data = data, .timestamp = now};
+    if (xQueueSend(queue, &msg, 0) != pdPASS)
     {
-    case 4:
-        swap(&v[0], &v[1]);
-        swap(&v[2], &v[3]);
-        swap(&v[0], &v[2]);
-        swap(&v[1], &v[3]);
-        swap(&v[1], &v[2]);
-        break;
-
-    case 3:
-        swap(&v[0], &v[1]);
-        swap(&v[1], &v[2]);
-        swap(&v[0], &v[1]);
-        break;
-
-    case 2:
-        swap(&v[0], &v[1]);
-        break;
-
-    case 1:
-    case 0:
-    default:
-        // rien à faire
-        break;
+        (*lost)++;
     }
 }
 

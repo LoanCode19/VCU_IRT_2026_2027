@@ -48,8 +48,7 @@ def compile_unit(cc, source, obj, flags):
 
 
 def build(cc, test_file, defines):
-    # EMU en premier : son FreeRTOSConfig.h passe avant celui de include/ (config de demo), et son
-    # portmacro.h (enveloppe du port officiel) avant tout autre
+    # EMU en premier : son portmacro.h (enveloppe du port officiel) passe avant tout autre
     includes = [f"-I{EMU}", f"-I{KERNEL / 'include'}", f"-I{COMMON}", f"-I{ROOT / 'include'}"]
     dflags = [f"-D{d}" for d in defines]
     out = BUILD / test_file.stem

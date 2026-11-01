@@ -124,6 +124,8 @@ def check_arm(arm_gcc):
     if not arm_gcc:
         report("BLOQUE", "Q2b", "-", "arm-none-eabi-gcc introuvable (variable ARM_GCC ou STM32CubeIDE)")
         report("BLOQUE", "C2b", "-", "arm-none-eabi-gcc introuvable (variable ARM_GCC ou STM32CubeIDE)")
+        report("BLOQUE", "C2c", "-", "arm-none-eabi-gcc introuvable (variable ARM_GCC ou STM32CubeIDE)")
+        report("BLOQUE", "Q3b", "-", "arm-none-eabi-gcc introuvable (variable ARM_GCC ou STM32CubeIDE)")
         return
     rtos = BOARD / "Middlewares" / "Third_Party" / "FreeRTOS" / "Source"
     flags = [
@@ -134,7 +136,7 @@ def check_arm(arm_gcc):
         f"-I{BOARD / 'Drivers' / 'CMSIS' / 'Device' / 'ST' / 'STM32F4xx' / 'Include'}",
         f"-I{BOARD / 'Drivers' / 'CMSIS' / 'Include'}",
         f"-I{rtos / 'include'}", f"-I{rtos / 'CMSIS_RTOS'}", f"-I{rtos / 'portable' / 'GCC' / 'ARM_CM4F'}",
-        f"-I{ROOT / 'Emulators'}", f"-I{INCLUDE}",
+        f"-I{INCLUDE}",
     ]
 
     # Q2 vu par la carte : int32_t y est un long, uint32_t un unsigned long
@@ -151,6 +153,29 @@ def check_arm(arm_gcc):
     check("C2b", "-", not hidden,
           f"compilation carte sans les -Wno-* : {len(hidden)} diagnostic(s) masque(s)"
           + (" -> " + " | ".join(hidden[:3]) if hidden else ""))
+
+    # C2 : le code VCU compile sans aucun warning avec -Wall -Wextra, comme sur la carte (USE_WDG). Le projet
+    # carte ne peut pas ajouter -Wextra : il s'appliquerait aussi au code de ST (HAL), qui en donne beaucoup.
+    warnings = []
+    for src in app_sources():
+        _, diag = compile_diagnostics(arm_gcc, src, flags + ["-Wextra", "-DUSE_WDG"])
+        warnings += [f"{src.name}: {l.split('warning: ', 1)[1].strip()}" for l in diag.splitlines() if "warning: " in l]
+    check("C2c", "-", not warnings,
+          f"code VCU avec -Wall -Wextra (compilateur carte) : {len(warnings)} warning(s)"
+          + (" -> " + " | ".join(warnings[:3]) if warnings else ""))
+
+    # Q3 : chaque en-tete du code VCU se suffit a lui-meme. Inclus seul, et deux fois de suite, il compile sans
+    # warning : il inclut ce qu'il utilise et se protege d'une double inclusion.
+    broken = []
+    with tempfile.TemporaryDirectory() as tmp:
+        unit = Path(tmp) / "entete.c"
+        for header in sorted(INCLUDE.glob("*.h")):
+            unit.write_text(f'#include "{header.name}"\n#include "{header.name}"\n')
+            _, diag = compile_diagnostics(arm_gcc, unit, flags + ["-DUSE_WDG"])
+            if any(("error" in l) or ("warning" in l) for l in diag.splitlines()):
+                broken.append(header.name)
+    check("Q3b", "-", not broken,
+          "en-tetes qui ne compilent pas seuls (inclus deux fois) : " + (", ".join(broken) if broken else "aucun"))
 
 
 # ------------------------------------------------------------------------------------------------
@@ -180,19 +205,27 @@ def check_sources():
     check("R6c", "-", "vTaskStartScheduler" not in vcu,
           "MainApp() demarre lui-meme le scheduler (main.c appelle deja osKernelStart)")
 
-    # R7 : mutex de console_print seulement sous LINUX
+    # R7 : console_print prend un mutex sur la carte comme sur PC : une seule version, sans #ifdef LINUX, et
+    # xSemaphoreTake dans console_print
     console = read(SRC / "console.c")
-    other_branch = console.split("#else", 1)[1] if "#else" in console else ""
-    check("R7a", "-", "xSemaphoreTake" in other_branch or "#ifdef LINUX" not in console,
-          "console_print sans mutex sur la carte (mutex seulement si LINUX)")
+    print_body = console.split("void console_print", 1)[1] if "void console_print" in console else ""
+    protected = "#ifdef LINUX" not in console and "xSemaphoreTake" in print_body
+    check("R7a", "-", protected,
+          "console_print " + ("protege par un mutex, sur la carte comme sur PC" if protected
+                              else "sans mutex sur la carte (mutex seulement si LINUX, ou absent)"))
 
-    # P3 : ancien emulateur inutilisable sur la carte
-    isr_emu = read(ROOT / "Emulators" / "CanISREmulator.c")
-    drv_emu = read(ROOT / "Emulators" / "CanRXDriverEmulator.c")
-    isr_outside_linux = re.sub(r"#ifdef LINUX.*?#endif", "", isr_emu, flags=re.S)
-    unusable = "CAN_ReadNext" in isr_outside_linux and "#ifdef LINUX" in drv_emu
-    check("P3a", "-", not unusable,
-          "TEST_ISR sans LINUX : CanISREmulator appelle CAN_ReadNext, defini seulement sous LINUX (ne linke pas)")
+    # P3 : l'ancien injecteur de trames (TEST_ISR) ne linkait pas sur la carte : CanISREmulator appelait
+    # CAN_ReadNext, defini seulement sous LINUX. L'emulateur FreeRTOS (Emulators/FreeRTOS_PC) le remplace.
+    old_injector = ["Emulators/CanISREmulator.c", "Emulators/CanISREmulator.h", "Emulators/CanRXDriverEmulator.c",
+                    "Emulators/CanRXDriverEmulator.h", "dataSets"]
+    # Un dossier vide ne compte pas : Git ne suit pas les dossiers, mais OneDrive peut en laisser un apres un
+    # changement de branche
+    leftovers = [p for p in old_injector
+                 if (ROOT / p).is_file() or ((ROOT / p).is_dir() and any((ROOT / p).iterdir()))]
+    if "TEST_ISR" in vcu:
+        leftovers.append("bloc TEST_ISR de VCU.c")
+    check("P3a", "-", not leftovers,
+          "ancien injecteur de trames, inutilisable sur la carte : " + (", ".join(leftovers) if leftovers else "retire"))
 
 
 # ------------------------------------------------------------------------------------------------

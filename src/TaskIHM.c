@@ -10,10 +10,10 @@
 #include "TaskIHM.h"
 
 // Transmet l'ordre a TaskDigitalSignals, dans le format que xDSQueue transporte
-static void sendDSOrder(QueueHandle_t *queueDS, Order_t order, bool state)
+static void SendDSOrder(QueueHandle_t queueDS, Order_t order, bool state)
 {
     DigitalOrder_t msg = {.order = order, .state = state};
-    xQueueSend(*queueDS, &msg, pdMS_TO_TICKS(5));
+    (void)xQueueSend(queueDS, &msg, DS_SEND_TIMEOUT);
 }
 
 void TaskIHM(void *pvParameters)
@@ -22,16 +22,15 @@ void TaskIHM(void *pvParameters)
     QueueHandle_t *queueIHM = params->xIHMQueue;
     QueueHandle_t *queueDS = params->xDSQueue;
     TaskId taskId = params->taskId;
-    (void)taskId;
-    IHMOrder_t order;
 
-    for(;;){
-        if(xQueueReceive(*queueIHM, &order, IHM_TIMEOUT) == pdPASS){
-            sendDSOrder(queueDS, order.order, order.state);
+    for (;;)
+    {
+        IHMOrder_t order;
+        if (xQueueReceive(*queueIHM, &order, IHM_TIMEOUT) == pdPASS)
+        {
+            SendDSOrder(*queueDS, order.order, order.state);
         }
 
-#ifdef USE_WDG
-        wdgFeed(taskId, xTaskGetTickCount());
-#endif
+        wdgFeedNow(taskId);
     }
 }

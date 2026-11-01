@@ -1,23 +1,24 @@
 #ifndef TRVP_H
 #define TRVP_H
 
+#include <stdbool.h>
+#include <stdint.h>
+
+#include "FreeRTOS.h"
+#include "queue.h"
+#include "structs.h"
+
 void TaskRawValuesProcessing(void *pvParameters);
-void updateWheelsDataTimeStatus(dataMessage_t wheelSpeeds[4], TickType_t timeNow);
 
 typedef struct
 {
-    // int32_t ThrottleCommand; // calculated throttle command to be sent to the inverter
     uint32_t speed; // vitesse du vehicule, en mm/s (D7)
 
     dataMessage_t wheelSpeeds[4];
     dataMessage_t appsValues[2];
     dataMessage_t brake; // frein, trame d'etat du vehicule (T19)
 
-    bool brakePedalPressed; // true if brake pedal is pressed, false otherwise
-    TickType_t lastCheckedBreakPedal;
-
-    TickType_t lastCallTimeStmp;
-
+    bool brakePedalPressed; // frein appuye, ou signal du frein douteux (S2)
 } TRVPState_t;
 
 typedef struct
@@ -28,4 +29,4 @@ typedef struct
 
 } TRVPParams_t;
 
-#endif
+#endif // TRVP_H

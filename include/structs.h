@@ -1,11 +1,13 @@
-#include <stdint.h>
+#ifndef STRUCTS_H
+#define STRUCTS_H
+
 #include <stdbool.h>
+#include <stdint.h>
+
 #include "FreeRTOS.h"
 #include "queue.h"
 #include "project_config.h"
 
-#ifndef STRUCTS_H
-#define STRUCTS_H
 // enums
 typedef enum
 {
@@ -29,6 +31,7 @@ typedef enum TasksIds
 } TaskId; // MUST BEGIN AT ZERO
 // enums
 
+// Les quatre roues, puis les deux APPS, se suivent dans cet ordre : TRVP s'en sert comme index de tableau
 typedef enum messageIds
 {
     wheelFRId,
@@ -80,14 +83,6 @@ typedef struct
 
 typedef TickType_t WDGTimoutTable[MAX_TASKS];
 
-typedef enum speedStatus
-{
-    SPEED_VALID,
-    SPEED_DEGRADED,
-    SPEED_INVALID
-
-} SpeedStatus;
-
 typedef enum Order
 {
     FaultLight = 0,
@@ -96,6 +91,7 @@ typedef enum Order
     R2Dbuzzer = 3,
     HBLed = 4,
 
+    OUTPUT_COUNT, // nombre de sorties : toujours en dernier
 } Order_t;
 
 typedef struct

@@ -8,6 +8,9 @@
 #define WDG_PERIOD pdMS_TO_TICKS(100)
 #define IHM_TIMEOUT pdMS_TO_TICKS(100)
 #define DS_TIMEOUT pdMS_TO_TICKS(100)
+#define COOLING_TIMEOUT pdMS_TO_TICKS(100)
+// Attente maximale pour deposer un ordre dans la queue de TaskDigitalSignals (IHM, refroidissement)
+#define DS_SEND_TIMEOUT pdMS_TO_TICKS(5)
 // Attente maximale de CanRx et CanTx : elles nourrissent le watchdog au moins a ce rythme,
 // meme sans trafic. La perte du bus est geree par les timeouts des donnees, pas par le watchdog.
 #define CAN_RX_TIMEOUT pdMS_TO_TICKS(100)
@@ -46,12 +49,16 @@
 #define BRAKE_THROTTLE_RELEASE_PERCENT 5.0f
 
 // Delai de chaque donnee dans Main (S5, T2, decide le 27/10/2026, revisable ; a reprendre du DBC) :
-// au-dela, la donnee est perimee et le couple coupe. Avec les 200 ms de TRVP pour les APPS, la chaine
-// reste sous les 500 ms de T 11.9.4.
+// au-dela, la donnee est perimee et le couple coupe. Avec APPS_TIMEOUT_MS dans TRVP, la chaine reste sous les
+// 500 ms de T 11.9.4.
 #define THROTTLE_CMD_TIMEOUT_MS 100
 #define SPEED_TIMEOUT_MS 200
 #define TEMP_TIMEOUT_MS 500
 #define VOLTAGE_TIMEOUT_MS 500
+
+// Delais dans TRVP (valeurs d'origine) : APPS perime -> couple coupe (S1) ; roue perimee -> ignoree par la vitesse
+#define APPS_TIMEOUT_MS 200
+#define WHEEL_TIMEOUT_MS 400
 
 // Etat du vehicule (trame provisoire 0x012 toutes les 10 ms, T19, decide le 27/10/2026, revisable) : au-dela de ce
 // delai, la trame est perdue. Sortie du R2D, voyant defaut, et le frein compte comme appuye (T 11.9.4 : 500 ms au
@@ -68,6 +75,13 @@
 #define WHEEL_RADIUS_M 0.20f      // hypothese : rayon sous charge, a mesurer
 // Ecart maximal entre deux roues pour les moyenner (T18, decide le 27/10/2026, revisable ; a regler en roulant)
 #define WHEEL_MAX_DIFF_MMS 1000
+
+// Refroidissement (valeurs d'origine, a regler) : la plus chaude des temperatures moteur et onduleur, en degres,
+// avec hysteresis. TS actif ou signal TS perdu : tout ON (S12, T9).
+#define COOLING_PUMP_ON_TEMP_C 50
+#define COOLING_PUMP_OFF_TEMP_C 45
+#define COOLING_FANS_ON_TEMP_C 55
+#define COOLING_FANS_OFF_TEMP_C 50
 
 // Traces des taches de la chaine de couple (TRVP, Main) : leur etat une fois par seconde, jamais a chaque
 // passage (T17, decide le 27/10/2026, revisable). La console SWV de la carte ne suit pas 100 passages par

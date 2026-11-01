@@ -24,7 +24,10 @@ static bool sVerbose = false;
 
 void console_init(void)
 {
-    sConsoleMutex = xSemaphoreCreateMutexStatic(&sConsoleMutexBuffer);
+    if (sConsoleMutex == NULL) // appelee par main_pc.c, puis par MainApp() : un seul mutex
+    {
+        sConsoleMutex = xSemaphoreCreateMutexStatic(&sConsoleMutexBuffer);
+    }
     sVerbose = (getenv("VCU_EMU_VERBOSE") != NULL);
 }
 
