@@ -6,6 +6,9 @@
 
 // Periode de TaskWDG : bien plus courte que l'IWDG de la carte (environ 500 ms), sinon reset en boucle
 #define WDG_PERIOD pdMS_TO_TICKS(100)
+// LED de vie HBLed (C7, T24, decide le 01/11/2026, revisable) : 500 ms allumee, 500 ms eteinte (1 Hz), basculee par
+// TaskWDG seulement quand toutes les taches sont a l'heure
+#define HB_LED_HALF_PERIOD_MS 500U
 #define IHM_TIMEOUT pdMS_TO_TICKS(100)
 #define DS_TIMEOUT pdMS_TO_TICKS(100)
 #define COOLING_TIMEOUT pdMS_TO_TICKS(100)

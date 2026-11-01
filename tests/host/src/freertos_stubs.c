@@ -32,6 +32,10 @@ static unsigned sDelayCallsBeforeEscape = 0U;
 static unsigned sDelayCalls = 0U;
 static TestWakeHook_t sWakeHook = NULL;
 
+// Envois refuses parce que la queue etait pleine, et la plus longue attente demandee pour l'un d'eux (T24c)
+static unsigned sFullSends = 0U;
+static TickType_t sMaxWaitOnFullSend = 0U;
+
 static TestCreatedTask_t sCreatedTasks[TEST_MAX_CREATED_TASKS];
 static unsigned sCreatedTaskCount = 0U;
 static uintptr_t sStackTop = 0U;
@@ -86,8 +90,13 @@ QueueHandle_t xQueueCreate(UBaseType_t queueLength, UBaseType_t itemSize)
 BaseType_t xQueueSend(QueueHandle_t queueHandle, const void *item, TickType_t ticksToWait)
 {
     TestQueue_t *queue = (TestQueue_t *)queueHandle;
-    (void)ticksToWait;
 
+    if ((queue != NULL) && (item != NULL) && (queue->count >= queue->queueLength))
+    {
+        // Queue pleine : la vraie bloquerait jusqu'a ticksToWait. Ici, simple echec, mais l'attente demandee est notee.
+        sFullSends++;
+        sMaxWaitOnFullSend = (ticksToWait > sMaxWaitOnFullSend) ? ticksToWait : sMaxWaitOnFullSend;
+    }
     if ((queue == NULL) || (item == NULL) || (queue->count >= queue->queueLength))
     {
         return pdFAIL;
@@ -177,6 +186,22 @@ void vTestEnableEscapeWhenQueueEmpty(jmp_buf *env)
 void vTestDisableEscapeWhenQueueEmpty(void)
 {
     sEscapeEnv = NULL;
+}
+
+void vTestResetFullSends(void)
+{
+    sFullSends = 0U;
+    sMaxWaitOnFullSend = 0U;
+}
+
+unsigned uxTestFullSendCount(void)
+{
+    return sFullSends;
+}
+
+TickType_t xTestMaxWaitOnFullSend(void)
+{
+    return sMaxWaitOnFullSend;
 }
 
 UBaseType_t uxTestQueueCount(QueueHandle_t queueHandle)

@@ -75,7 +75,8 @@ void MainApp(void)
     CreateTask(TaskIHM, "IHM", 256, &ihmParams, 2);
 
 #ifdef USE_WDG
-    CreateTask(TaskWDG, "WDG", 256, NULL, 1);
+    static TaskWDGParams_t wdgParams = {&xIHMQueue}; // LED de vie, par TaskIHM (T24)
+    CreateTask(TaskWDG, "WDG", 256, &wdgParams, 1);
 
     wdgRegisterTasks();
 

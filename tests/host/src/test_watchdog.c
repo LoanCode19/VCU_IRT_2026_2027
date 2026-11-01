@@ -38,6 +38,7 @@ static CanTxParam_t sCanTxParams;
 static TaskIHMParam_t sIhmParams;
 static TRVPParams_t sTrvpParams;
 static MainParams_t sMainParams;
+static TaskWDGParams_t sWdgParams; // queue de TaskIHM, pour la LED de vie (T24)
 
 void test_refreshIWDG(void)
 {
@@ -79,6 +80,8 @@ static void Setup(void)
     wdgRegister(TaskCanRxId, CAN_RX_WDG_TIMEOUT, wdgTimeoutTable); // comme wdgRegisterTasks()
 
     sCanRxParams = (CanRxParams_t){&xMainQueue, &xTRVPQueue, &xCanRxQueue, TaskCanRxId};
+    xIHMQueue = xQueueCreate(IHM_QUEUE_LENGTH, sizeof(IHMOrder_t));
+    sWdgParams = (TaskWDGParams_t){&xIHMQueue};
     sRefreshCount = 0;
     sLateRefreshCount = 0;
     sLateFrom = 0xFFFFFFFFu;
@@ -142,7 +145,7 @@ static void TestWatchdog_RefreshWhenHealthy(void)
     Setup();
     sFeedUntil = 0xFFFFFFFFu;
     vTestSetDelayCallsBeforeEscape(5, FeedCanRx); // 5 periodes de TaskWDG
-    RunTaskOnce(TaskWDG, NULL);
+    RunTaskOnce(TaskWDG, &sWdgParams);
     vTestSetDelayCallsBeforeEscape(0, NULL);
 
     vt_check("W1a", "-", sRefreshCount == 5,
@@ -157,7 +160,7 @@ static void TestWatchdog_NoRefreshWhenStalled(void)
     // Dernier signe de vie a 2000 ms : en retard apres son timeout, constate a la periode suivante
     sLateFrom = sFeedUntil + CAN_RX_WDG_TIMEOUT + WDG_PERIOD_MS;
     vTestSetDelayCallsBeforeEscape(6000U / WDG_PERIOD_MS, FeedCanRx); // jusqu'a t = 6 s
-    RunTaskOnce(TaskWDG, NULL);
+    RunTaskOnce(TaskWDG, &sWdgParams);
     vTestSetDelayCallsBeforeEscape(0, NULL);
 
     vt_check("W1b", "-", sLateRefreshCount == 0,
@@ -270,13 +273,83 @@ static void TestWatchdog_TrafficKeepsSlowTasks(void)
     wdgRegisterTasks();     // les 7 taches, avec leurs delais, comme MainApp()
     vTestSetTickCount(2000U); // une tache qui n'a jamais donne signe de vie est deja en retard
     vTestSetDelayCallsBeforeEscape(3, FeedWithTraffic); // 3 periodes de TaskWDG
-    RunTaskOnce(TaskWDG, NULL);
+    RunTaskOnce(TaskWDG, &sWdgParams);
     vTestSetDelayCallsBeforeEscape(0, NULL);
 
     vt_check("W6a", "-", sRefreshCount == 3,
              "3 periodes avec trafic (12 signes de vie des taches rapides, puis 1 par tache lente) -> IWDG rafraichi "
              "%u fois (attendu 3 : aucune tache lente ne doit paraitre en retard)",
              sRefreshCount);
+}
+
+// Ordres HBLed deposes par TaskWDG dans la queue de TaskIHM : leur nombre, et l'etat du premier et du dernier
+static unsigned DrainHeartbeat(bool *first, bool *last)
+{
+    unsigned count = 0U;
+    IHMOrder_t order;
+    while (xQueueReceive(xIHMQueue, &order, 0) == pdPASS)
+    {
+        if (order.order == HBLed)
+        {
+            *first = (count == 0U) ? order.state : *first;
+            *last = order.state;
+            count++;
+        }
+    }
+    return count;
+}
+
+// T24 (C7, decide le 01/11/2026, revisable) : la LED de vie bascule toutes les HB_LED_HALF_PERIOD_MS, par la queue de
+// TaskIHM, seulement quand toutes les taches sont a l'heure, et sans que TaskWDG attende
+static void TestWatchdog_Heartbeat(void)
+{
+    const unsigned periods = (unsigned)(2U * HB_LED_HALF_PERIOD_MS / WDG_PERIOD_MS); // 1 s
+    bool first = false;
+    bool last = true;
+
+    // T24a : tout va bien pendant 1 s -> deux bascules, ON puis OFF
+    Setup();
+    sFeedUntil = 0xFFFFFFFFu;
+    vTestSetDelayCallsBeforeEscape(periods, FeedCanRx);
+    RunTaskOnce(TaskWDG, &sWdgParams);
+    vTestSetDelayCallsBeforeEscape(0, NULL);
+    unsigned toggles = DrainHeartbeat(&first, &last);
+    vt_check("T24a", "-", (toggles == 2U) && first && !last,
+             "%u periodes de %lu ms sans retard -> %u ordre(s) HBLed, premier %s, dernier %s (attendu 2 : ON puis OFF, "
+             "une bascule toutes les %u ms)",
+             periods, (unsigned long)WDG_PERIOD_MS, toggles, first ? "ON" : "OFF", last ? "ON" : "OFF",
+             (unsigned)HB_LED_HALF_PERIOD_MS);
+
+    // T24b : TaskCanRx n'a jamais donne signe de vie et le demarrage est loin -> aucune bascule
+    Setup();
+    vTestSetTickCount(2000U);
+    sFeedUntil = 0U;
+    vTestSetDelayCallsBeforeEscape(periods, FeedCanRx);
+    RunTaskOnce(TaskWDG, &sWdgParams);
+    vTestSetDelayCallsBeforeEscape(0, NULL);
+    unsigned lateToggles = DrainHeartbeat(&first, &last);
+    vt_check("T24b", "-", (lateToggles == 0U) && (sRefreshCount == 0U),
+             "TaskCanRx en retard pendant 1 s -> %u ordre(s) HBLed, IWDG rafraichi %u fois (attendu 0 et 0 : la LED ne "
+             "dit plus que tout va bien)",
+             lateToggles, sRefreshCount);
+
+    // T24c : queue de TaskIHM pleine -> TaskWDG essaie sans attendre, et rafraichit toujours l'IWDG
+    Setup();
+    sFeedUntil = 0xFFFFFFFFu;
+    IHMOrder_t filler = {.order = FaultLight, .state = false};
+    while (xQueueSend(xIHMQueue, &filler, 0) == pdPASS)
+    {
+    }
+    vTestResetFullSends();
+    vTestSetDelayCallsBeforeEscape(periods, FeedCanRx);
+    RunTaskOnce(TaskWDG, &sWdgParams);
+    vTestSetDelayCallsBeforeEscape(0, NULL);
+    unsigned refused = uxTestFullSendCount();
+    TickType_t wait = xTestMaxWaitOnFullSend();
+    vt_check("T24c", "-", (refused > 0U) && (wait == 0U) && (sRefreshCount == periods),
+             "queue de TaskIHM pleine pendant %u periodes -> %u envoi(s) de la LED refuse(s), attente demandee %lu ms, "
+             "IWDG rafraichi %u fois (attendu au moins 1, 0 ms et %u)",
+             periods, refused, (unsigned long)wait, sRefreshCount, periods);
 }
 
 int main(void)
@@ -290,6 +363,7 @@ int main(void)
     TestWatchdog_CanRxWithoutTraffic();
     TestWatchdog_OutputTasksWithoutMessages();
     TestWatchdog_TrafficKeepsSlowTasks();
+    TestWatchdog_Heartbeat();
 
     return vt_end();
 }

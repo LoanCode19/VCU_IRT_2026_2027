@@ -1,6 +1,7 @@
 #ifdef USE_WDG
 #include "FreeRTOS.h"
 #include "task.h"
+#include "queue.h"
 
 #include "structs.h"
 #include "project_config.h"
@@ -15,11 +16,29 @@ WDGTimoutTable wdgTimeoutTable;
 
 static bool checkTasksTimeout(void);
 
+// LED de vie (C7, T24, decide le 01/11/2026, revisable) : basculee toutes les HB_LED_HALF_PERIOD_MS. L'ordre passe
+// par TaskIHM, sans attendre : queue pleine, il repart a la periode suivante (l'etat n'est garde qu'une fois parti).
+static void HeartbeatStep(QueueHandle_t ihmQueue, TickType_t now, TickType_t *lastToggle, bool *ledOn)
+{
+    if ((TickType_t)(now - *lastToggle) < pdMS_TO_TICKS(HB_LED_HALF_PERIOD_MS))
+    {
+        return;
+    }
+    IHMOrder_t order = {.order = HBLed, .state = !*ledOn};
+    if (xQueueSend(ihmQueue, &order, 0) == pdPASS)
+    {
+        *ledOn = !*ledOn;
+        *lastToggle = now;
+    }
+}
+
 void TaskWDG(void *pvParameters)
 {
-    (void)pvParameters; // les signes de vie arrivent par la table wdgLastFeed (utils.c)
+    TaskWDGParams_t *params = (TaskWDGParams_t *)pvParameters;
 
     TickType_t timeNow = xTaskGetTickCount();
+    TickType_t lastToggle = timeNow;
+    bool ledOn = false;
 
     while (1)
     {
@@ -28,6 +47,8 @@ void TaskWDG(void *pvParameters)
         if (checkTasksTimeout())
         {
             refreshIWDG(); // toutes les taches sont a l'heure
+            // La LED de vie ne bascule que dans ce cas : elle dit que tout le VCU tourne (T24)
+            HeartbeatStep(*params->xIHMQueue, timeNow, &lastToggle, &ledOn);
         }
         else
         {
