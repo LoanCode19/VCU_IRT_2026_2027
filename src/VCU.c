@@ -64,10 +64,12 @@ void MainApp(void)
     static CoolingParams_t coolingParams = {&xCoolingQueue, TaskCoolingId};
 
     // Priorite : plus le nombre est grand, plus la tache est prioritaire. Pile en mots de 4 octets.
+    // TRVP au-dessus de Main (R9, T28, decide le 01/11/2026, revisable) : reveillees au meme tick, TRVP passe
+    // d'abord et Main lit la consigne de la meme periode.
     CreateTask(TaskCanRx, "CAN_RX", 256, &canRxParams, 6);
-    CreateTask(TaskMain, "MAIN", 512, &mainTaskParam, 5);
+    CreateTask(TaskMain, "MAIN", 512, &mainTaskParam, 4);
     CreateTask(TaskCanTx, "CAN_TX", 512, &canTxParams, 5);
-    CreateTask(TaskRawValuesProcessing, "TRVP", 512, &TRVPParams, 4);
+    CreateTask(TaskRawValuesProcessing, "TRVP", 512, &TRVPParams, 5);
     CreateTask(TaskDigitalSignals, "DIGITAL", 256, &digitalSignalsParams, 3);
     CreateTask(TaskCoolingSystem, "COOLING", 256, &coolingParams, 2);
     CreateTask(TaskIHM, "IHM", 256, &ihmParams, 2);

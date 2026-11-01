@@ -123,6 +123,14 @@ static void TestIntegration_Priorities(void)
              "(attendu TaskCanRx au-dessus de ses lecteurs, TaskDigitalSignals au-dessus de ses ecrivains)",
              canRx, PriorityOf(TaskRawValuesProcessing), PriorityOf(TaskMain), PriorityOf(TaskCoolingSystem), digital,
              PriorityOf(TaskIHM));
+
+    // R9 (T28, decide le 01/11/2026, revisable) : TRVP au-dessus de TaskMain. Les deux se reveillent au meme tick :
+    // TRVP passe d'abord, et TaskMain lit la consigne de la meme periode, pas celle d'avant (10 ms de retard).
+    int trvpPrio = PriorityOf(TaskRawValuesProcessing);
+    int mainPrio = PriorityOf(TaskMain);
+    vt_check("B8c", "-", (trvpPrio >= 0) && (mainPrio >= 0) && (trvpPrio > mainPrio),
+             "priorites : TRVP %d, TaskMain %d (attendu TRVP au-dessus : TaskMain lit la consigne de la meme periode)",
+             trvpPrio, mainPrio);
 }
 
 int main(void)
