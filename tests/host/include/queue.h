@@ -16,5 +16,9 @@ BaseType_t xQueuePeek(QueueHandle_t queue, void *item, TickType_t ticksToWait);
 void vTestEnableEscapeWhenQueueEmpty(jmp_buf *env);
 void vTestDisableEscapeWhenQueueEmpty(void);
 UBaseType_t uxTestQueueCount(QueueHandle_t queue);
+// Envois refuses parce que la queue etait pleine, depuis vTestResetFullSends(), et la plus longue attente demandee
+void vTestResetFullSends(void);
+unsigned uxTestFullSendCount(void);
+TickType_t xTestMaxWaitOnFullSend(void);
 
 #endif // TEST_HOST_QUEUE_H

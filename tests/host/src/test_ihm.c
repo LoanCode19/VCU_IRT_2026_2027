@@ -54,7 +54,7 @@ typedef struct
 static void RunCooling(const CoolingInput_t *inputs, unsigned count, unsigned waits, char pump[8], char fans[8])
 {
     BootMainApp();
-    sCoolingParams = (CoolingParams_t){&xCoolingQueue, TaskCoolingId};
+    sCoolingParams = (CoolingParams_t){&xCoolingQueue, TaskCoolingId, &xDSQueue};
     vTestSetTickAutoIncrement(false);
     vTestSetTickCount(COOLING_T0);
     for (unsigned i = 0; i < count; i++)
@@ -103,6 +103,26 @@ static void TestDigital_Outputs(void)
              "ordres pompe ON, voyant ON, pompe OFF -> pompe %s, voyant %s (attendu OFF, ON : le dernier ordre de chaque "
              "sortie)",
              pump ? "ON" : "OFF", light ? "ON" : "OFF");
+}
+
+// Q9 (T28) : les ordres partent dans la queue recue en parametre. La globale xDSQueue est une autre queue : elle ne
+// doit rien recevoir.
+static void TestCooling_QueueFromParameters(void)
+{
+    BootMainApp();
+    QueueHandle_t ownDS = xQueueCreate(8U, sizeof(DigitalOrder_t));
+    sCoolingParams = (CoolingParams_t){&xCoolingQueue, TaskCoolingId, &ownDS};
+    vTestSetTickAutoIncrement(false);
+    vTestSetTickCount(COOLING_T0);
+    dataMessage_t msg = {.id = motor_tempId, .data = 20, .timestamp = COOLING_T0};
+    (void)xQueueSend(xCoolingQueue, &msg, 0);
+    RunTaskOnce(TaskCoolingSystem, &sCoolingParams);
+    unsigned inOwn = (unsigned)uxTestQueueCount(ownDS);
+    unsigned inGlobal = (unsigned)uxTestQueueCount(xDSQueue);
+    vt_check("Q9b", "-", (inOwn == 2U) && (inGlobal == 0U),
+             "temperature recue -> %u ordre(s) dans la queue des parametres, %u dans la globale xDSQueue (attendu 2 "
+             "et 0)",
+             inOwn, inGlobal);
 }
 
 static void TestCooling_Rules(void)
@@ -170,6 +190,7 @@ int main(void)
              received ? (int)off.order : -1, received ? (int)off.state : -1, (int)FaultLight);
 
     TestCooling_Rules();
+    TestCooling_QueueFromParameters();
     TestDigital_Outputs();
 
     return vt_end();

@@ -7,7 +7,14 @@
 
 extern WDGTimoutTable wdgTimeoutTable;
 
-void TaskWDG(void *pvParameters); // sans parametre : elle lit wdgLastFeed (utils.h)
+// Parametres de TaskWDG : la queue de TaskIHM, ou part la LED de vie (T24). Les signes de vie arrivent par la table
+// wdgLastFeed (utils.h).
+typedef struct
+{
+    QueueHandle_t *xIHMQueue;
+} TaskWDGParams_t;
+
+void TaskWDG(void *pvParameters);
 
 #endif // TASK_WDG_H
 #endif // USE_WDG

@@ -65,6 +65,7 @@ void TaskRawValuesProcessing(void *pvParameters)
     }
     trvpState.brake.timeStatus = STATUS_NOT_READY;
     AppsMonitor_t appsMonitor = {0}; // S1 : incoherence en cours, faute confirmee (D2)
+    SpeedHold_t speedHold = {0};     // T25 : derniere vitesse sure, gardee si les roues ne sont plus d'accord
     TickType_t lastTrace = xTaskGetTickCount();
 
     // R1 (T3) : une passe toutes les CONTROL_PERIOD_MS, quel que soit le trafic CAN
@@ -81,7 +82,11 @@ void TaskRawValuesProcessing(void *pvParameters)
         TickType_t now = xTaskGetTickCount();
         updateDataTimeStatus(trvpState.wheelSpeeds, WHEEL_COUNT, WHEEL_TIMEOUT_MS, now);
         updateDataTimeStatus(trvpState.appsValues, APPS_COUNT, APPS_TIMEOUT_MS, now);
-        trvpState.speed = calculateSpeed(trvpState.wheelSpeeds, WHEEL_COUNT);
+        // T25 : sans vitesse sure (aucune roue a l'heure, ou desaccord de plus de SPEED_HOLD_MS), trvpState.speed vaut
+        // 0 et rien ne part vers Main, qui verra la vitesse perimee (couple 0 et voyant, T2)
+        int32_t wheelSpeed = 0;
+        SpeedStatus_t speedStatus = calculateSpeed(trvpState.wheelSpeeds, WHEEL_COUNT, &wheelSpeed);
+        bool speedKnown = SpeedHoldStep(&speedHold, speedStatus, wheelSpeed, now, &trvpState.speed);
 
         // Frein (S2) : il agit sur le couple, c'est un signal critique (T 11.9.1). Jamais recu, perime ou d'une
         // valeur autre que 0 : il compte comme appuye, et le couple est coupe.
@@ -99,7 +104,10 @@ void TaskRawValuesProcessing(void *pvParameters)
         }
 
         SendDataMessage(*xMainQueue, processedThrottleId, FP_FROMFLT(throttleCommand), now, &trvpSendFailures);
-        SendDataMessage(*xMainQueue, calculatedSpeedId, (int32_t)trvpState.speed, now, &trvpSendFailures); // mm/s
+        if (speedKnown)
+        {
+            SendDataMessage(*xMainQueue, calculatedSpeedId, trvpState.speed, now, &trvpSendFailures); // mm/s
+        }
         // Faute APPS confirmee (S1, D2) : Main allume le voyant defaut
         SendDataMessage(*xMainQueue, appsFaultId, appsMonitor.latched ? 1 : 0, now, &trvpSendFailures);
 
@@ -121,7 +129,7 @@ static void PrintTRVPState(const TRVPState_t *state, float pedalCmd)
     console_print("TRVP State:\n");
     console_print("  Pedal command: %ld (0.1 %%)\n", (long)(pedalCmd * 10.0f));
     console_print("  Brake Pedal Pressed: %s\n", state->brakePedalPressed ? "Yes" : "No");
-    console_print("  Speed: %lu mm/s\n", (unsigned long)state->speed);
+    console_print("  Speed: %ld mm/s\n", (long)state->speed);
     for (int i = 0; i < WHEEL_COUNT; i++)
     {
         console_print("  Wheel %d Speed: %ld, Time Status: %d\n", i, (long)state->wheelSpeeds[i].data, state->wheelSpeeds[i].timeStatus);

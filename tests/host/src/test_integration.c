@@ -56,6 +56,23 @@ static void TestIntegration_TaskParameters(void)
              onStack);
 }
 
+// Q9 (T28, decide le 01/11/2026, revisable) : TaskCoolingSystem recoit la queue des sorties en parametre, comme TaskIHM
+static void TestIntegration_CoolingParameters(void)
+{
+    BootMainApp();
+    const CoolingParams_t *params = NULL;
+    for (unsigned i = 0; i < uxTestCreatedTaskCount(); i++)
+    {
+        if (pxTestCreatedTask(i)->function == TaskCoolingSystem)
+        {
+            params = (const CoolingParams_t *)pxTestCreatedTask(i)->parameters;
+        }
+    }
+    bool ok = (params != NULL) && (params->xDSQueue == &xDSQueue) && (params->xCoolingQueue == &xCoolingQueue);
+    vt_check("Q9a", "-", ok, "parametres de TaskCoolingSystem : queue des sorties %s (attendu &xDSQueue)",
+             (params == NULL) ? "tache absente" : ((params->xDSQueue == &xDSQueue) ? "&xDSQueue" : "autre ou NULL"));
+}
+
 static void TestIntegration_AllTasksCreated(void)
 {
     static const struct
@@ -123,6 +140,14 @@ static void TestIntegration_Priorities(void)
              "(attendu TaskCanRx au-dessus de ses lecteurs, TaskDigitalSignals au-dessus de ses ecrivains)",
              canRx, PriorityOf(TaskRawValuesProcessing), PriorityOf(TaskMain), PriorityOf(TaskCoolingSystem), digital,
              PriorityOf(TaskIHM));
+
+    // R9 (T28, decide le 01/11/2026, revisable) : TRVP au-dessus de TaskMain. Les deux se reveillent au meme tick :
+    // TRVP passe d'abord, et TaskMain lit la consigne de la meme periode, pas celle d'avant (10 ms de retard).
+    int trvpPrio = PriorityOf(TaskRawValuesProcessing);
+    int mainPrio = PriorityOf(TaskMain);
+    vt_check("B8c", "-", (trvpPrio >= 0) && (mainPrio >= 0) && (trvpPrio > mainPrio),
+             "priorites : TRVP %d, TaskMain %d (attendu TRVP au-dessus : TaskMain lit la consigne de la meme periode)",
+             trvpPrio, mainPrio);
 }
 
 int main(void)
@@ -134,6 +159,7 @@ int main(void)
 
     TestIntegration_Queues();
     TestIntegration_TaskParameters();
+    TestIntegration_CoolingParameters();
     TestIntegration_AllTasksCreated();
     TestIntegration_Priorities();
 

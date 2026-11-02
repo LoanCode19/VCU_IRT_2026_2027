@@ -9,6 +9,7 @@ typedef struct
 {
     QueueHandle_t *xCoolingQueue;
     TaskId taskId;
+    QueueHandle_t *xDSQueue; // queue de TaskDigitalSignals, ou partent les ordres (Q9)
 } CoolingParams_t;
 
 void TaskCoolingSystem(void *pvParameters);

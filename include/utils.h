@@ -9,7 +9,7 @@
 #include "task.h"
 #include "structs.h"
 
-float GetUserThrottleCommand(const dataMessage_t *pot1val, const dataMessage_t *pot2val, int speed, bool brake);
+float GetUserThrottleCommand(const dataMessage_t *pot1val, const dataMessage_t *pot2val, int32_t speed, bool brake);
 bool AppsImplausible(const dataMessage_t *apps1, const dataMessage_t *apps2);
 float AppsPedalPercent(const dataMessage_t *apps1);
 void ResetThrottleState(void); // S9 (T10) : efface le verrou frein + accelerateur
@@ -31,7 +31,24 @@ bool dataFresh(dataMessage_t *data, int timeoutMs, TickType_t now);
 // *lost le compte (lisible au debogueur).
 void SendDataMessage(QueueHandle_t queue, MessageIds id, int32_t data, TickType_t now, uint32_t *lost);
 int32_t WheelRawToMmS(int32_t raw);
-int calculateSpeed(dataMessage_t wheelSpeeds[4], int wheelCount);
+// Vitesse a partir des roues (B4, T18, T25) : l'etat, et la vitesse en mm/s dans *speed (Q5 : int32_t partout)
+typedef enum
+{
+    SPEED_OK = 0,   // vitesse sure
+    SPEED_NO_WHEEL, // aucune roue a l'heure
+    SPEED_DISAGREE, // deux ou trois roues toutes trop differentes
+} SpeedStatus_t;
+SpeedStatus_t calculateSpeed(dataMessage_t wheelSpeeds[4], int wheelCount, int32_t *speed);
+
+// Vitesse envoyee a Main par TRVP (T25) : la derniere vitesse sure, gardee pendant un desaccord des roues
+typedef struct
+{
+    int32_t speed;    // derniere vitesse sure, en mm/s
+    bool known;       // une vitesse sure peut encore etre gardee
+    bool disagreeing; // desaccord en cours
+    TickType_t since; // debut du desaccord
+} SpeedHold_t;
+bool SpeedHoldStep(SpeedHold_t *hold, SpeedStatus_t status, int32_t speed, TickType_t now, int32_t *out);
 
 // Dernier signe de vie de chaque tache surveillee, ecrit par wdgFeed() et lu par TaskWDG (T15).
 // 0 : la tache n'a encore jamais donne signe de vie.

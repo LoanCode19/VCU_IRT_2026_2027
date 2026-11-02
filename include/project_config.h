@@ -6,6 +6,9 @@
 
 // Periode de TaskWDG : bien plus courte que l'IWDG de la carte (environ 500 ms), sinon reset en boucle
 #define WDG_PERIOD pdMS_TO_TICKS(100)
+// LED de vie HBLed (C7, T24, decide le 01/11/2026, revisable) : 500 ms allumee, 500 ms eteinte (1 Hz), basculee par
+// TaskWDG seulement quand toutes les taches sont a l'heure
+#define HB_LED_HALF_PERIOD_MS 500U
 #define IHM_TIMEOUT pdMS_TO_TICKS(100)
 #define DS_TIMEOUT pdMS_TO_TICKS(100)
 #define COOLING_TIMEOUT pdMS_TO_TICKS(100)
@@ -26,11 +29,19 @@
 // Queue pleine : le plus ancien message laisse sa place et la perte est comptee (T13).
 #define TRVP_QUEUE_LENGTH 20U
 #define MAIN_QUEUE_LENGTH 20U
+// Longueurs des autres queues (valeurs d'origine), reunies ici au lot 8 (Q10, T28, decide le 01/11/2026, revisable)
+#define IHM_QUEUE_LENGTH 10U
+#define CAN_TX_QUEUE_LENGTH 10U
+#define CAN_RX_QUEUE_LENGTH 32U // 8 ms de trames au debit maximal (500 kbit/s)
+#define DS_QUEUE_LENGTH 10U
+#define COOLING_QUEUE_LENGTH 10U
 
+// Delai de watchdog de chaque tache : sans signe de vie depuis plus longtemps, l'IWDG redemarre la carte. Toutes a
+// 500 ms ; TaskCanRx aussi depuis le lot 8 (W7, T28, decide le 01/11/2026, revisable : elle avait 1 000 ms).
 #define MAIN_WDG_TIMEOUT pdMS_TO_TICKS(500)
 #define TRVP_WDG_TIMEOUT pdMS_TO_TICKS(500)
 #define IHM_WDG_TIMEOUT pdMS_TO_TICKS(500)
-#define CAN_RX_WDG_TIMEOUT pdMS_TO_TICKS(1000)
+#define CAN_RX_WDG_TIMEOUT pdMS_TO_TICKS(500)
 #define CAN_TX_WDG_TIMEOUT pdMS_TO_TICKS(500)
 #define DS_WDG_TIMEOUT pdMS_TO_TICKS(500)
 #define COOLING_WDG_TIMEOUT pdMS_TO_TICKS(500)
@@ -60,6 +71,11 @@
 #define APPS_TIMEOUT_MS 200
 #define WHEEL_TIMEOUT_MS 400
 
+// Vitesse envoyee a Main (T25, decide le 01/11/2026, revisable). Aucune roue a l'heure : plus de vitesse. Roues en
+// desaccord : la derniere vitesse sure pendant au plus SPEED_HOLD_MS (le delai d'une roue muette), puis plus de
+// vitesse. Sans vitesse, Main la voit perimee apres SPEED_TIMEOUT_MS : couple 0 et voyant (T2).
+#define SPEED_HOLD_MS 400
+
 // Etat du vehicule (trame provisoire 0x012 toutes les 10 ms, T19, decide le 27/10/2026, revisable) : au-dela de ce
 // delai, la trame est perdue. Sortie du R2D, voyant defaut, et le frein compte comme appuye (T 11.9.4 : 500 ms au
 // plus).
@@ -73,8 +89,9 @@
 #define WHEEL_SPEED_PROVISIONAL 1 // a retirer quand les deux valeurs ci-dessous sont mesurees (test D7a)
 #define WHEEL_SENSOR_RAW_IS_RPM 1 // hypothese : le capteur donne des tr/min de roue
 #define WHEEL_RADIUS_M 0.20f      // hypothese : rayon sous charge, a mesurer
-// Ecart maximal entre deux roues pour les moyenner (T18, decide le 27/10/2026, revisable ; a regler en roulant)
-#define WHEEL_MAX_DIFF_MMS 1000
+// Ecart maximal entre deux roues pour les moyenner, accepte au plus (T18, decide le 27/10/2026, revise le
+// 01/11/2026 : 2 m/s au lieu de 1, PROVISOIRE, Loan doit le confirmer avec l'equipe ; a regler en roulant)
+#define WHEEL_MAX_DIFF_MMS 2000
 
 // Refroidissement (valeurs d'origine, a regler) : la plus chaude des temperatures moteur et onduleur, en degres,
 // avec hysteresis. TS actif ou signal TS perdu : tout ON (S12, T9).

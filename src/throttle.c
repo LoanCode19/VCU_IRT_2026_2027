@@ -93,7 +93,7 @@ float NormalizeThrottle(int potval, int potIdx)
  * @param brake Frein appuye, ou signal du frein douteux (S2).
  * @return float Demande de 0 a 100 %.
  */
-float CalcThrottle(float potnom, int speed, bool brake)
+float CalcThrottle(float potnom, int32_t speed, bool brake)
 {
 
     if (speed < 0) // make sure speed is not negative

@@ -7,7 +7,6 @@
 
 #include "structs.h"
 #include "project_config.h"
-#include "queueHandles.h"
 #include "my_math.h"
 #include "utils.h"
 #include "TaskCoolingSystem.h"
@@ -82,17 +81,18 @@ static void EvaluateTemperatures(CoolingState_t *state)
     state->fansByTemp = Hysteresis(state->fansByTemp, hottest, COOLING_FANS_ON_TEMP_C, COOLING_FANS_OFF_TEMP_C);
 }
 
-static void PublishOrder(Order_t order, bool on)
+// L'ordre part dans la queue recue en parametre (Q9), comme pour TaskIHM : pas de queue globale
+static void PublishOrder(QueueHandle_t queueDS, Order_t order, bool on)
 {
-    if (xDSQueue != NULL)
+    if (queueDS != NULL)
     {
         DigitalOrder_t outputOrder = {.order = order, .state = on};
-        (void)xQueueSend(xDSQueue, &outputOrder, DS_SEND_TIMEOUT);
+        (void)xQueueSend(queueDS, &outputOrder, DS_SEND_TIMEOUT);
     }
 }
 
 // Envoie a TaskDigitalSignals les ordres qui changent, et les deux la premiere fois
-static void PublishOrders(CoolingState_t *state)
+static void PublishOrders(CoolingState_t *state, QueueHandle_t queueDS)
 {
     bool tsForces = TsForcesCooling(state);
     bool pumpOn = state->pumpByTemp || tsForces;
@@ -100,11 +100,11 @@ static void PublishOrders(CoolingState_t *state)
 
     if (!state->published || (pumpOn != state->pumpOn))
     {
-        PublishOrder(CoolingPump, pumpOn);
+        PublishOrder(queueDS, CoolingPump, pumpOn);
     }
     if (!state->published || (fansOn != state->fansOn))
     {
-        PublishOrder(CoolingFans, fansOn);
+        PublishOrder(queueDS, CoolingFans, fansOn);
     }
     state->published = true;
     state->pumpOn = pumpOn;
@@ -115,6 +115,7 @@ void TaskCoolingSystem(void *pvParameters)
 {
     CoolingParams_t *params = (CoolingParams_t *)pvParameters;
     QueueHandle_t *xTCSQueue = params->xCoolingQueue;
+    QueueHandle_t *queueDS = params->xDSQueue;
     TaskId taskId = params->taskId;
 
     CoolingState_t state = {0};
@@ -154,7 +155,7 @@ void TaskCoolingSystem(void *pvParameters)
             (inverterBefore != state.inverterTemp.timeStatus) || (tsBefore != state.tsActive.timeStatus))
         {
             EvaluateTemperatures(&state);
-            PublishOrders(&state);
+            PublishOrders(&state, *queueDS);
         }
 
         wdgFeedNow(taskId);

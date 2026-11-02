@@ -51,7 +51,7 @@ static void RunCoolingPublishesToDigitalQueueTest(void)
     if (setjmp(env) == 0)
     {
         vTestEnableEscapeWhenQueueEmpty(&env);
-        TaskCoolingSystem(&(CoolingParams_t){&xTCSQueue, TaskCoolingId});
+        TaskCoolingSystem(&(CoolingParams_t){&xTCSQueue, TaskCoolingId, &xDSQueue});
     }
     vTestDisableEscapeWhenQueueEmpty();
 
@@ -97,7 +97,7 @@ static void RunCoolingStaysOffBelowThresholdTest(void)
     if (setjmp(env) == 0)
     {
         vTestEnableEscapeWhenQueueEmpty(&env);
-        TaskCoolingSystem(&(CoolingParams_t){&xTCSQueue, TaskCoolingId});
+        TaskCoolingSystem(&(CoolingParams_t){&xTCSQueue, TaskCoolingId, &xDSQueue});
     }
     vTestDisableEscapeWhenQueueEmpty();
 
@@ -148,7 +148,7 @@ static void RunCoolingDoesNotRepublishUnchangedStateTest(void)
     if (setjmp(env) == 0)
     {
         vTestEnableEscapeWhenQueueEmpty(&env);
-        TaskCoolingSystem(&(CoolingParams_t){&xTCSQueue, TaskCoolingId});
+        TaskCoolingSystem(&(CoolingParams_t){&xTCSQueue, TaskCoolingId, &xDSQueue});
     }
     vTestDisableEscapeWhenQueueEmpty();
 
@@ -182,7 +182,7 @@ static void RunCoolingTimeoutForcesFailsafeTest(void)
     if (setjmp(env) == 0)
     {
         vTestEnableEscapeWhenQueueEmpty(&env);
-        TaskCoolingSystem(&(CoolingParams_t){&xTCSQueue, TaskCoolingId});
+        TaskCoolingSystem(&(CoolingParams_t){&xTCSQueue, TaskCoolingId, &xDSQueue});
     }
     vTestDisableEscapeWhenQueueEmpty();
 
