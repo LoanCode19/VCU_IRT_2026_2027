@@ -674,6 +674,7 @@ static void TestChaine_Trvp(void)
 static int sStopId;
 static unsigned sStopPass;
 static bool sNeverSent; // sStopId n'est jamais envoye (meme a la passe 0)
+static bool sUnknownToMain; // CT5a : une valeur brute d'APPS (pour TRVP) arrive aussi a Main a chaque passe
 
 static void MainData(unsigned pass, TickType_t now)
 {
@@ -694,6 +695,10 @@ static void MainData(unsigned pass, TickType_t now)
         {
             Push(xMainQueue, data[i].id, data[i].value, now);
         }
+    }
+    if (sUnknownToMain)
+    {
+        Push(xMainQueue, apps1Id, 200, now); // apres les temperatures : rangee par erreur, elle les remplacerait
     }
 }
 
@@ -914,6 +919,53 @@ static void TestChaine_Main(void)
              lateStep, step, maxStep, (unsigned)CONTROL_MAX_ELAPSED_MS);
 }
 
+// CT5 : un message qu'une tache n'attend pas est ignore. TaskCanRx n'en envoie pas aujourd'hui ; un futur signal du DBC
+// route vers la mauvaise queue ne doit rien changer. Chaque cas est compare au meme scenario sans ce message.
+static void BrakeAppsAndUnknown(unsigned pass, TickType_t now)
+{
+    BrakeAndApps(pass, now);
+    Push(xTRVPQueue, motor_tempId, 1, now); // TRVP n'attend pas de temperature ; apres le frein relache
+}
+
+static void TestChaine_UnknownMessages(void)
+{
+    unsigned passes = 20U;
+    RunMainData(T_NOW, passes, -1, 0U, false);
+    float normal = TorqueAt(passes - 1U);
+    sUnknownToMain = true;
+    RunMainData(T_NOW, passes, -1, 0U, false);
+    sUnknownToMain = false;
+    float withUnknown = TorqueAt(passes - 1U);
+    if (normal <= 0.0f)
+    {
+        vt_blocked("CT5a", "-", "Main en R2D sans couple (%.1f %%) : message inattendu non verifiable", normal);
+    }
+    else
+    {
+        vt_check("CT5a", "-", withUnknown == normal,
+                 "Main en R2D, consigne %.1f %% ; avec en plus un APPS brut (200) a chaque passe, que Main n'attend pas "
+                 "-> %.1f %% (attendu %.1f : message ignore)",
+                 normal, withUnknown, normal);
+    }
+
+    float pedal = TrvpPedalAt(T_NOW, 3U, 0, true, 2U);
+    sBrakeValue = 0;
+    sAppsEveryPass = true;
+    RunTrvp(T_NOW, 3U, BrakeAppsAndUnknown);
+    float pedalUnknown = sTrvpPedal[2];
+    if (pedal <= 0.0f)
+    {
+        vt_blocked("CT5b", "-", "TRVP sans consigne (%.1f %%) : message inattendu non verifiable", pedal);
+    }
+    else
+    {
+        vt_check("CT5b", "-", pedalUnknown == pedal,
+                 "TRVP, APPS a 40 %%, frein relache, consigne %.1f %% ; avec en plus une temperature (1) a chaque passe, "
+                 "que TRVP n'attend pas -> %.1f %% (attendu %.1f : message ignore)",
+                 pedal, pedalUnknown, pedal);
+    }
+}
+
 int main(void)
 {
     vt_begin("Chaine de couple TRVP -> Main -> CanTx");
@@ -937,6 +989,7 @@ int main(void)
     TestChaine_R2DNeedsBrake();
     TestChaine_Trvp();
     TestChaine_Main();
+    TestChaine_UnknownMessages();
     TestChaine_DataAge();
     TestChaine_Traces();
     TestChaine_SendNeverBlocks();

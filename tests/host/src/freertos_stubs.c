@@ -35,6 +35,7 @@ static TestWakeHook_t sWakeHook = NULL;
 // Envois refuses parce que la queue etait pleine, et la plus longue attente demandee pour l'un d'eux (T24c)
 static unsigned sFullSends = 0U;
 static TickType_t sMaxWaitOnFullSend = 0U;
+static unsigned sNullQueueSends = 0U;
 
 static TestCreatedTask_t sCreatedTasks[TEST_MAX_CREATED_TASKS];
 static unsigned sCreatedTaskCount = 0U;
@@ -96,6 +97,10 @@ BaseType_t xQueueSend(QueueHandle_t queueHandle, const void *item, TickType_t ti
         // Queue pleine : la vraie bloquerait jusqu'a ticksToWait. Ici, simple echec, mais l'attente demandee est notee.
         sFullSends++;
         sMaxWaitOnFullSend = (ticksToWait > sMaxWaitOnFullSend) ? ticksToWait : sMaxWaitOnFullSend;
+    }
+    if (queue == NULL)
+    {
+        sNullQueueSends++;
     }
     if ((queue == NULL) || (item == NULL) || (queue->count >= queue->queueLength))
     {
@@ -339,31 +344,10 @@ void vTestSetStackTop(const void *stackTop)
     sStackTop = (uintptr_t)stackTop;
 }
 
-// Copie de src/utils.c pour le test du refroidissement, qui n'embarque pas utils.c.
-// Les autres secteurs testent la vraie version (TEST_LINK_REAL_UTILS).
-#ifndef TEST_LINK_REAL_UTILS
-void updateDataTimeStatus(dataMessage_t *dataMsg, int count, int maxDiff, TickType_t now)
+unsigned uxTestNullQueueSends(void)
 {
-    if ((dataMsg == NULL) || (count <= 0))
-    {
-        return;
-    }
-
-    for (int i = 0; i < count; i++)
-    {
-        if (dataMsg[i].timeStatus == STATUS_NOT_READY)
-        {
-            continue;
-        }
-
-        TickType_t timeDiff = now - dataMsg[i].timestamp;
-        if (timeDiff > pdMS_TO_TICKS(maxDiff))
-        {
-            dataMsg[i].timeStatus = STATUS_TIMEOUT;
-        }
-    }
+    return sNullQueueSends;
 }
-#endif
 
 void vTestAssertFailed(const char *file, int line)
 {

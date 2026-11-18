@@ -61,13 +61,27 @@ static void TestApps_Plausibility(void)
     vt_check("S1p", "T 11.9.2.c", torque <= 0.0f,
              "APPS1 a 100 %%, APPS2 a %d (au-dessus de sa plage) -> couple %.1f %% (attendu 0)", potmax[1] + 300, torque);
 
-    torque = Command(Apps(0, 0.0f, STATUS_TIMEOUT), Apps(1, 80.0f, STATUS_TIME_OK), 0, false);
-    vt_check("S1b", "T 11.9.2.d", torque <= 0.0f,
-             "APPS1 en timeout, APPS2 80 %% -> couple %.1f %% (attendu 0)", torque);
-
-    torque = Command(Apps(0, 0.0f, STATUS_NOT_READY), Apps(1, 80.0f, STATUS_TIME_OK), 0, false);
-    vt_check("S1c", "T 11.8.9", torque <= 0.0f,
-             "APPS1 jamais recu, APPS2 80 %% -> couple %.1f %% (attendu 0)", torque);
+    // APPS1 a la meme valeur qu'APPS2 : seul son etat (perime, jamais recu) peut couper le couple. Avec APPS1 a 0 %,
+    // l'ecart entre les deux capteurs coupait deja, et le controle de l'etat d'APPS1 n'etait pas verifie (CT1).
+    float bothFresh = Command(Apps(0, 80.0f, STATUS_TIME_OK), Apps(1, 80.0f, STATUS_TIME_OK), 0, false);
+    float apps1Stale = Command(Apps(0, 80.0f, STATUS_TIMEOUT), Apps(1, 80.0f, STATUS_TIME_OK), 0, false);
+    float apps1Never = Command(Apps(0, 80.0f, STATUS_NOT_READY), Apps(1, 80.0f, STATUS_TIME_OK), 0, false);
+    if (bothFresh <= 0.0f)
+    {
+        vt_blocked("S1b", "T 11.9.2.d", "APPS a 80 %% et frais -> couple %.1f %% : perte d'APPS1 non verifiable",
+                   bothFresh);
+        vt_blocked("S1c", "T 11.8.9", "APPS a 80 %% et frais -> couple %.1f %% : APPS1 jamais recu non verifiable",
+                   bothFresh);
+    }
+    else
+    {
+        vt_check("S1b", "T 11.9.2.d", apps1Stale <= 0.0f,
+                 "APPS1 en timeout a 80 %%, APPS2 80 %% -> couple %.1f %% (attendu 0 ; frais tous les deux : %.1f %%)",
+                 apps1Stale, bothFresh);
+        vt_check("S1c", "T 11.8.9", apps1Never <= 0.0f,
+                 "APPS1 jamais recu (80 %%), APPS2 80 %% -> couple %.1f %% (attendu 0 ; frais tous les deux : %.1f %%)",
+                 apps1Never, bothFresh);
+    }
 
     // Court-circuit au + : l'ADC lit sa valeur max. potmax (3900) + POT_SLACK (200) > 4095,
     // donc la valeur est consideree "dans la plage" et vaut 100 %.
@@ -166,6 +180,19 @@ static void TestApps_InputNotModified(void)
     vt_check("S4d", "-", (flat == 0.0f) && (badIndex == 0.0f),
              "course nulle (potmin = potmax) -> %.1f %% ; capteur n. 2 (inexistant) -> %.1f %% (attendu 0 et 0)", flat,
              badIndex);
+
+    // CT4 : numero de capteur negatif -> 0 %, sans lire hors des tableaux de calibration
+    float negativeIndex = NormalizeThrottle(2000, -1);
+    vt_check("CT4c", "-", negativeIndex == 0.0f, "capteur n. -1 (inexistant) -> %.1f %% (attendu 0)", negativeIndex);
+
+    // CT4 : un pointeur nul a la place d'un APPS -> 0 %, sans le lire
+    dataMessage_t valid1 = Apps(0, 40.0f, STATUS_TIME_OK);
+    dataMessage_t valid2 = Apps(1, 40.0f, STATUS_TIME_OK);
+    float noApps1 = GetUserThrottleCommand(NULL, &valid2, 0, false);
+    float noApps2 = GetUserThrottleCommand(&valid1, NULL, 0, false);
+    vt_check("CT4d", "-", (noApps1 == 0.0f) && (noApps2 == 0.0f),
+             "APPS1 nul, APPS2 a 40 %% -> %.1f %% ; APPS1 a 40 %%, APPS2 nul -> %.1f %% (attendu 0 et 0)", noApps1,
+             noApps2);
 }
 
 // Fenetre de plage : la course, elargie d'une marge de chaque cote. Dans la marge, la valeur est bornee a la course.

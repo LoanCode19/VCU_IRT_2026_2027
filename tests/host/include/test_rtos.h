@@ -46,4 +46,8 @@ unsigned uxTestYieldFromISRCount(void);
 // Adresse d'une variable locale de main() : sert de borne haute de la pile pour detecter B5.
 void vTestSetStackTop(const void *stackTop);
 
+// Appels a xQueueSend() avec une queue nulle depuis le demarrage du test. La vraie FreeRTOS s'arreterait dans
+// configASSERT ; ici l'envoi echoue sans bruit : ce compteur le rend visible (CT4).
+unsigned uxTestNullQueueSends(void);
+
 #endif // TEST_HOST_TEST_RTOS_H

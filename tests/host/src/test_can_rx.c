@@ -409,6 +409,33 @@ static void TestCanRx_BeforeQueues(void)
              (unsigned)uxTestQueueCount(xCanRxQueue), full);
 }
 
+// CT4 : sans queue du refroidissement, les temperatures vont quand meme a Main, et aucune perte n'est comptee pour le
+// refroidissement. Deux cas : le champ absent (pointeur nul, comme une initialisation sans ce champ), et un pointeur
+// vers une queue nulle.
+static QueueHandle_t sNoCoolingQueue = NULL;
+
+static void TestCanRx_NoCoolingQueue(void)
+{
+    QueueHandle_t *cases[2] = {NULL, &sNoCoolingQueue};
+    unsigned toMain[2];
+    unsigned long lost[2];
+    for (unsigned c = 0; c < 2U; c++)
+    {
+        Setup(500U);
+        sCanRxParams.xCoolingQueue = cases[c];
+        uint32_t lostBefore = canRxStats.lostCooling;
+        unsigned mainBefore = (unsigned)uxTestQueueCount(xMainQueue);
+        (void)PushDtiTemperatures(40, 40);
+        RunTaskOnce(TaskCanRx, &sCanRxParams);
+        toMain[c] = (unsigned)uxTestQueueCount(xMainQueue) - mainBefore;
+        lost[c] = (unsigned long)(canRxStats.lostCooling - lostBefore);
+    }
+    vt_check("CT4g", "-", (toMain[0] == 2U) && (lost[0] == 0UL) && (toMain[1] == 2U) && (lost[1] == 0UL),
+             "trame de temperatures, refroidissement sans queue : champ absent -> %u message(s) vers Main, lostCooling "
+             "+%lu ; pointeur vers une queue nulle -> %u, +%lu (attendu 2 et 0 les deux fois)",
+             toMain[0], lost[0], toMain[1], lost[1]);
+}
+
 int main(void)
 {
     vt_begin("Reception CAN");
@@ -420,6 +447,7 @@ int main(void)
     TestCanRx_Table();
     TestCanRx_Overload();
     TestCanRx_BeforeQueues();
+    TestCanRx_NoCoolingQueue();
 
     return vt_end();
 }

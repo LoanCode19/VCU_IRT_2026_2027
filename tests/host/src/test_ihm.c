@@ -1,6 +1,7 @@
 // Secteur : IHM et sorties tout-ou-rien (buzzer R2D, voyant defaut, LED de vie, pompe et ventilateurs)
 // Code teste : TaskIHM (src/TaskIHM.c) et TaskCoolingSystem (src/TaskCoolingSystem.c) avec les queues de MainApp()
-// Problemes : B7 de AUDIT_VCU.md ; regles du refroidissement (project_config.h) que le test historique ne couvre pas
+// Problemes : B7 de AUDIT_VCU.md ; regles du refroidissement (project_config.h), dont les scenarios de l'ancien test
+// historique (CL-e a CL-h, retire le 18/11/2026 : il liait une copie de updateDataTimeStatus)
 
 #include <stdbool.h>
 #include <string.h>
@@ -42,6 +43,7 @@ static void CheckForward(const char *id, const char *rule, Order_t order, const 
 #define COOLING_T0 1000U
 
 static CoolingParams_t sCoolingParams;
+static TickType_t sCoolingAge = 0U; // age des messages deposes par RunCooling (CL-h : temperature deja perimee)
 
 typedef struct
 {
@@ -59,7 +61,7 @@ static void RunCooling(const CoolingInput_t *inputs, unsigned count, unsigned wa
     vTestSetTickCount(COOLING_T0);
     for (unsigned i = 0; i < count; i++)
     {
-        dataMessage_t msg = {.id = inputs[i].id, .data = inputs[i].value, .timestamp = COOLING_T0};
+        dataMessage_t msg = {.id = inputs[i].id, .data = inputs[i].value, .timestamp = COOLING_T0 - sCoolingAge};
         (void)xQueueSend(xCoolingQueue, &msg, 0);
     }
     vTestSetBlockingTimeoutsBeforeEscape(waits);
@@ -83,6 +85,70 @@ static void RunCooling(const CoolingInput_t *inputs, unsigned count, unsigned wa
     fans[nf] = '\0';
 }
 
+// Les scenarios de l'ancien test historique (test_cooling_digital.c, retire), avec le vrai utils.c. Ils gardent des
+// comportements du code d'origine, notes "a confirmer" comme CL-a a CL-c (T27, etendu par T45).
+static void TestCooling_FirstOrders(void)
+{
+    char pump[8];
+    char fans[8];
+
+    // Premier message chaud : un ordre ON pour chaque sortie, un seul
+    static const CoolingInput_t hot[] = {{motor_tempId, 56}};
+    RunCooling(hot, 1U, 0U, pump, fans);
+    vt_check("CL-e", "-", (strcmp(pump, "1") == 0) && (strcmp(fans, "1") == 0),
+             "premier message, moteur a 56 degres -> pompe %s, ventilateurs %s (attendu 1 et 1 : au-dessus de %d et de "
+             "%d degres)",
+             pump, fans, COOLING_PUMP_ON_TEMP_C, COOLING_FANS_ON_TEMP_C);
+
+    // Premier message froid : les deux ordres partent quand meme, a OFF, pour mettre les sorties dans un etat connu
+    static const CoolingInput_t cold[] = {{motor_tempId, 40}};
+    RunCooling(cold, 1U, 0U, pump, fans);
+    vt_check("CL-f", "-", (strcmp(pump, "0") == 0) && (strcmp(fans, "0") == 0),
+             "premier message, moteur a 40 degres -> pompe %s, ventilateurs %s (attendu 0 et 0 : les premiers ordres "
+             "partent meme a OFF)",
+             pump, fans);
+
+    // Deux messages chauds de suite : un ordre inchange ne repart pas
+    static const CoolingInput_t hotTwice[] = {{motor_tempId, 56}, {motor_tempId, 57}};
+    RunCooling(hotTwice, 2U, 0U, pump, fans);
+    vt_check("CL-g", "-", (strcmp(pump, "1") == 0) && (strcmp(fans, "1") == 0),
+             "moteur a 56 puis 57 degres -> pompe %s, ventilateurs %s (attendu 1 et 1 : pas de second envoi)", pump,
+             fans);
+
+    // Temperature deja perimee a son arrivee (plus vieille que TEMP_TIMEOUT_MS) : perdue, tout s'allume, meme a 30
+    sCoolingAge = (TickType_t)(TEMP_TIMEOUT_MS + 100);
+    static const CoolingInput_t stale[] = {{motor_tempId, 30}};
+    RunCooling(stale, 1U, 0U, pump, fans);
+    sCoolingAge = 0U;
+    vt_check("CL-h", "-", (strcmp(pump, "1") == 0) && (strcmp(fans, "1") == 0),
+             "moteur a 30 degres, message vieux de %d ms -> pompe %s, ventilateurs %s (attendu 1 et 1 : une temperature "
+             "perdue allume tout)",
+             TEMP_TIMEOUT_MS + 100, pump, fans);
+}
+
+// CT3 (T9) : TS recu a 0 (TS coupe), voiture froide : les temperatures decident, tout reste eteint. Les autres tests
+// essaient TS actif (FS-18), TS perdu (S12a) et TS jamais recu, pas celui-ci.
+// CT5 : un message que le refroidissement n'attend pas (ici la tension) est ignore.
+static void TestCooling_TsOffAndUnknown(void)
+{
+    char pump[8];
+    char fans[8];
+
+    static const CoolingInput_t tsOff[] = {{tsActiveId, 0}, {motor_tempId, 20}, {inverter_tempId, 20}};
+    RunCooling(tsOff, 3U, 0U, pump, fans);
+    vt_check("CT3a", "-", (strcmp(pump, "0") == 0) && (strcmp(fans, "0") == 0),
+             "TS recu a 0, moteur et onduleur a 20 degres -> pompe %s, ventilateurs %s (attendu 0 et 0 : TS coupe, les "
+             "temperatures decident, T9)",
+             pump, fans);
+
+    static const CoolingInput_t unknown[] = {{motor_tempId, 20}, {voltageId, 80}};
+    RunCooling(unknown, 2U, 0U, pump, fans);
+    vt_check("CT5c", "-", (strcmp(pump, "0") == 0) && (strcmp(fans, "0") == 0),
+             "moteur a 20 degres, puis un message de tension (80) que la tache n'attend pas -> pompe %s, ventilateurs "
+             "%s (attendu 0 et 0 : message ignore)",
+             pump, fans);
+}
+
 // TaskDigitalSignals retient l'etat demande de chaque sortie (les broches viendront avec D5)
 extern volatile bool digitalOutputs[OUTPUT_COUNT];
 static DigitalSignalsParams_t sDigitalParams;
@@ -103,6 +169,54 @@ static void TestDigital_Outputs(void)
              "ordres pompe ON, voyant ON, pompe OFF -> pompe %s, voyant %s (attendu OFF, ON : le dernier ordre de chaque "
              "sortie)",
              pump ? "ON" : "OFF", light ? "ON" : "OFF");
+}
+
+// CT4 : un ordre de sortie hors du tableau (OUTPUT_COUNT, au-dela, ou negatif) ne change aucune sortie. Comme pour
+// wdgFeed(), une ecriture juste a cote du tableau ne se voit pas a coup sur : on verifie qu'aucune sortie valide ne bouge.
+static void TestDigital_OrderOutOfRange(void)
+{
+    BootMainApp();
+    sDigitalParams = (DigitalSignalsParams_t){&xDSQueue, TaskDigitalSignalsId};
+    for (unsigned i = 0; i < (unsigned)OUTPUT_COUNT; i++)
+    {
+        digitalOutputs[i] = false;
+    }
+    const DigitalOrder_t orders[] = {{(Order_t)OUTPUT_COUNT, true}, {(Order_t)(OUTPUT_COUNT + 1), true}, {(Order_t)-1, true}};
+    for (unsigned i = 0; i < sizeof(orders) / sizeof(orders[0]); i++)
+    {
+        (void)xQueueSend(xDSQueue, &orders[i], 0);
+    }
+    RunTaskOnce(TaskDigitalSignals, &sDigitalParams);
+    unsigned on = 0U;
+    for (unsigned i = 0; i < (unsigned)OUTPUT_COUNT; i++)
+    {
+        on += digitalOutputs[i] ? 1U : 0U;
+    }
+    unsigned left = (unsigned)uxTestQueueCount(xDSQueue);
+    vt_check("CT4b", "-", (on == 0U) && (left == 0U),
+             "ordres ON pour les sorties %d, %d et -1 (hors du tableau) -> %u sortie(s) allumee(s), %u ordre(s) restes "
+             "dans la queue (attendu 0 et 0 : ordres lus et ignores)",
+             (int)OUTPUT_COUNT, (int)OUTPUT_COUNT + 1, on, left);
+}
+
+// CT4 : sans queue des sorties (le parametre pointe vers une queue nulle), le refroidissement n'envoie rien vers une
+// queue nulle : la vraie FreeRTOS s'y arreterait (configASSERT).
+static void TestCooling_NoOutputQueue(void)
+{
+    BootMainApp();
+    static QueueHandle_t noOutputs = NULL;
+    sCoolingParams = (CoolingParams_t){&xCoolingQueue, TaskCoolingId, &noOutputs};
+    vTestSetTickAutoIncrement(false);
+    vTestSetTickCount(COOLING_T0);
+    unsigned before = uxTestNullQueueSends();
+    dataMessage_t msg = {.id = motor_tempId, .data = 60, .timestamp = COOLING_T0};
+    (void)xQueueSend(xCoolingQueue, &msg, 0);
+    RunTaskOnce(TaskCoolingSystem, &sCoolingParams);
+    unsigned nullSends = uxTestNullQueueSends() - before;
+    vt_check("CT4h", "-", nullSends == 0U,
+             "refroidissement sans queue des sorties (pointeur vers une queue nulle), moteur a 60 degres -> %u envoi(s) "
+             "vers une queue nulle (attendu 0)",
+             nullSends);
 }
 
 // Q9 (T28) : les ordres partent dans la queue recue en parametre. La globale xDSQueue est une autre queue : elle ne
@@ -190,8 +304,12 @@ int main(void)
              received ? (int)off.order : -1, received ? (int)off.state : -1, (int)FaultLight);
 
     TestCooling_Rules();
+    TestCooling_FirstOrders();
+    TestCooling_TsOffAndUnknown();
     TestCooling_QueueFromParameters();
     TestDigital_Outputs();
+    TestDigital_OrderOutOfRange();
+    TestCooling_NoOutputQueue();
 
     return vt_end();
 }
