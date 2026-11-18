@@ -42,6 +42,7 @@ static void CheckForward(const char *id, const char *rule, Order_t order, const 
 #define COOLING_T0 1000U
 
 static CoolingParams_t sCoolingParams;
+static TickType_t sCoolingAge = 0U; // age des messages deposes par RunCooling (CL-h : temperature deja perimee)
 
 typedef struct
 {
@@ -59,7 +60,7 @@ static void RunCooling(const CoolingInput_t *inputs, unsigned count, unsigned wa
     vTestSetTickCount(COOLING_T0);
     for (unsigned i = 0; i < count; i++)
     {
-        dataMessage_t msg = {.id = inputs[i].id, .data = inputs[i].value, .timestamp = COOLING_T0};
+        dataMessage_t msg = {.id = inputs[i].id, .data = inputs[i].value, .timestamp = COOLING_T0 - sCoolingAge};
         (void)xQueueSend(xCoolingQueue, &msg, 0);
     }
     vTestSetBlockingTimeoutsBeforeEscape(waits);
@@ -81,6 +82,47 @@ static void RunCooling(const CoolingInput_t *inputs, unsigned count, unsigned wa
     }
     pump[np] = '\0';
     fans[nf] = '\0';
+}
+
+// Les scenarios de l'ancien test historique (test_cooling_digital.c), avec le vrai utils.c. Ils gardent des
+// comportements du code d'origine, notes "a confirmer" comme CL-a a CL-c (T27, etendu par T45).
+static void TestCooling_FirstOrders(void)
+{
+    char pump[8];
+    char fans[8];
+
+    // Premier message chaud : un ordre ON pour chaque sortie, un seul
+    static const CoolingInput_t hot[] = {{motor_tempId, 56}};
+    RunCooling(hot, 1U, 0U, pump, fans);
+    vt_check("CL-e", "-", (strcmp(pump, "1") == 0) && (strcmp(fans, "1") == 0),
+             "premier message, moteur a 56 degres -> pompe %s, ventilateurs %s (attendu 1 et 1 : au-dessus de %d et de "
+             "%d degres)",
+             pump, fans, COOLING_PUMP_ON_TEMP_C, COOLING_FANS_ON_TEMP_C);
+
+    // Premier message froid : les deux ordres partent quand meme, a OFF, pour mettre les sorties dans un etat connu
+    static const CoolingInput_t cold[] = {{motor_tempId, 40}};
+    RunCooling(cold, 1U, 0U, pump, fans);
+    vt_check("CL-f", "-", (strcmp(pump, "0") == 0) && (strcmp(fans, "0") == 0),
+             "premier message, moteur a 40 degres -> pompe %s, ventilateurs %s (attendu 0 et 0 : les premiers ordres "
+             "partent meme a OFF)",
+             pump, fans);
+
+    // Deux messages chauds de suite : un ordre inchange ne repart pas
+    static const CoolingInput_t hotTwice[] = {{motor_tempId, 56}, {motor_tempId, 57}};
+    RunCooling(hotTwice, 2U, 0U, pump, fans);
+    vt_check("CL-g", "-", (strcmp(pump, "1") == 0) && (strcmp(fans, "1") == 0),
+             "moteur a 56 puis 57 degres -> pompe %s, ventilateurs %s (attendu 1 et 1 : pas de second envoi)", pump,
+             fans);
+
+    // Temperature deja perimee a son arrivee (plus vieille que TEMP_TIMEOUT_MS) : perdue, tout s'allume, meme a 30
+    sCoolingAge = (TickType_t)(TEMP_TIMEOUT_MS + 100);
+    static const CoolingInput_t stale[] = {{motor_tempId, 30}};
+    RunCooling(stale, 1U, 0U, pump, fans);
+    sCoolingAge = 0U;
+    vt_check("CL-h", "-", (strcmp(pump, "1") == 0) && (strcmp(fans, "1") == 0),
+             "moteur a 30 degres, message vieux de %d ms -> pompe %s, ventilateurs %s (attendu 1 et 1 : une temperature "
+             "perdue allume tout)",
+             TEMP_TIMEOUT_MS + 100, pump, fans);
 }
 
 // CT3 (T9) : TS recu a 0 (TS coupe), voiture froide : les temperatures decident, tout reste eteint. Les autres tests
@@ -261,6 +303,7 @@ int main(void)
              received ? (int)off.order : -1, received ? (int)off.state : -1, (int)FaultLight);
 
     TestCooling_Rules();
+    TestCooling_FirstOrders();
     TestCooling_TsOffAndUnknown();
     TestCooling_QueueFromParameters();
     TestDigital_Outputs();
