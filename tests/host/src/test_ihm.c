@@ -1,6 +1,7 @@
 // Secteur : IHM et sorties tout-ou-rien (buzzer R2D, voyant defaut, LED de vie, pompe et ventilateurs)
 // Code teste : TaskIHM (src/TaskIHM.c) et TaskCoolingSystem (src/TaskCoolingSystem.c) avec les queues de MainApp()
-// Problemes : B7 de AUDIT_VCU.md ; regles du refroidissement (project_config.h) que le test historique ne couvre pas
+// Problemes : B7 de AUDIT_VCU.md ; regles du refroidissement (project_config.h), dont les scenarios de l'ancien test
+// historique (CL-e a CL-h, retire le 18/11/2026 : il liait une copie de updateDataTimeStatus)
 
 #include <stdbool.h>
 #include <string.h>
@@ -84,7 +85,7 @@ static void RunCooling(const CoolingInput_t *inputs, unsigned count, unsigned wa
     fans[nf] = '\0';
 }
 
-// Les scenarios de l'ancien test historique (test_cooling_digital.c), avec le vrai utils.c. Ils gardent des
+// Les scenarios de l'ancien test historique (test_cooling_digital.c, retire), avec le vrai utils.c. Ils gardent des
 // comportements du code d'origine, notes "a confirmer" comme CL-a a CL-c (T27, etendu par T45).
 static void TestCooling_FirstOrders(void)
 {

@@ -44,15 +44,10 @@ SECTORS = {
     "demarrage": ("test_integration.c", [], "Demarrage (MainApp)"),
     "watchdog": ("test_watchdog.c", ["USE_WDG", "refreshIWDG=test_refreshIWDG"], "Watchdog"),
     "ihm": ("test_ihm.c", [], "IHM et sorties TOR"),
-    "refroidissement": ("test_cooling_digital.c", [], "Refroidissement (test historique)"),
     "fs": ("test_fs.c", [], "Reglement FS 2026"),
 }
 
-# Le test historique du refroidissement embarque sa propre copie de updateDataTimeStatus
-LEGACY_COOLING_SOURCES = ["TaskCoolingSystem.c", "TaskDigitalSignals.c", "queueHandles.c"]
-
 LINE_RE = re.compile(r"^\[(PASS|FAIL|BLOQUE)\s*\]")
-LEGACY_RE = re.compile(r"^(PASS|FAIL): ")
 
 
 def include_flags():
@@ -82,24 +77,19 @@ def build_sector(cc, name, app_dir, includes):
     exe = exe_name(out_dir / f"test_{name}")
     dflags = [f"-D{d}" for d in defines]
 
-    if name == "refroidissement":
-        units = [(HOST / "src" / "freertos_stubs.c", []), (HOST / "src" / test_file, [])]
-        units += [(app_dir / s, []) for s in LEGACY_COOLING_SOURCES]
+    units = [(HOST / "src" / "freertos_stubs.c", []), (HOST / "src" / "console_stub.c", [])]
+    test_flags = ["-Wall", "-Wno-unused-function"]
+    if name == "carte":
+        # Le code de la carte fournit CanTx_Send() : une fausse HAL remplace le faux CanTx_Send()
+        if extract_board_user_code(out_dir) is None:
+            return None, f"zone USER CODE 4 introuvable dans {BOARD_MAIN.name}"
+        units.append((HOST / "src" / "hal_stub.c", []))
+        units.append((BOARD_SELFTEST, [f"-I{BOARD_INC}"])) # trames de l'autotest, sans la partie HAL
+        test_flags += [f"-I{out_dir}", f"-I{BOARD_INC}"]
     else:
-        units = [(HOST / "src" / "freertos_stubs.c", ["-DTEST_LINK_REAL_UTILS"]),
-                 (HOST / "src" / "console_stub.c", [])]
-        test_flags = ["-Wall", "-Wno-unused-function"]
-        if name == "carte":
-            # Le code de la carte fournit CanTx_Send() : une fausse HAL remplace le faux CanTx_Send()
-            if extract_board_user_code(out_dir) is None:
-                return None, f"zone USER CODE 4 introuvable dans {BOARD_MAIN.name}"
-            units.append((HOST / "src" / "hal_stub.c", []))
-            units.append((BOARD_SELFTEST, [f"-I{BOARD_INC}"])) # trames de l'autotest, sans la partie HAL
-            test_flags += [f"-I{out_dir}", f"-I{BOARD_INC}"]
-        else:
-            units.append((HOST / "src" / "can_stub.c", []))
-        units.append((HOST / "src" / test_file, test_flags))
-        units += [(src, ["-w"]) for src in sorted(app_dir.glob("*.c"))]
+        units.append((HOST / "src" / "can_stub.c", []))
+    units.append((HOST / "src" / test_file, test_flags))
+    units += [(src, ["-w"]) for src in sorted(app_dir.glob("*.c"))]
 
     objects = []
     for source, extra in units:
@@ -115,15 +105,9 @@ def build_sector(cc, name, app_dir, includes):
     return exe, None
 
 
-def parse_output(name, stdout):
+def parse_output(stdout):
     """Renvoie (pass, fail, bloque, lignes de resultat)."""
     lines = stdout.splitlines()
-    if name == "refroidissement":
-        results = [l for l in lines if LEGACY_RE.match(l)]
-        p = sum(1 for l in results if l.startswith("PASS"))
-        f = sum(1 for l in results if l.startswith("FAIL"))
-        return p, f, 0, [f"[{'PASS' if l.startswith('PASS') else 'FAIL':<6}] {l.split(': ', 1)[1]}"
-                         for l in results if l.startswith("FAIL")] or [f"[PASS  ] {p} verifications"]
     summary = next((l for l in lines if l.startswith("RESULTAT|")), None)
     results = [l for l in lines if LINE_RE.match(l) or l.startswith("         ")]
     if summary is None:
@@ -180,7 +164,7 @@ def main():
             stdout = proc.stdout
         except subprocess.TimeoutExpired:
             stdout = ""
-        parsed = parse_output(name, stdout)
+        parsed = parse_output(stdout)
         print(f"\n=== {SECTORS[name][2]} ===")
         if parsed is None:
             print("[FAIL  ] crash  -            le test s'est arrete avant la fin (plantage ou boucle infinie)")

@@ -349,32 +349,6 @@ unsigned uxTestNullQueueSends(void)
     return sNullQueueSends;
 }
 
-// Copie de src/utils.c pour le test du refroidissement, qui n'embarque pas utils.c.
-// Les autres secteurs testent la vraie version (TEST_LINK_REAL_UTILS).
-#ifndef TEST_LINK_REAL_UTILS
-void updateDataTimeStatus(dataMessage_t *dataMsg, int count, int maxDiff, TickType_t now)
-{
-    if ((dataMsg == NULL) || (count <= 0))
-    {
-        return;
-    }
-
-    for (int i = 0; i < count; i++)
-    {
-        if (dataMsg[i].timeStatus == STATUS_NOT_READY)
-        {
-            continue;
-        }
-
-        TickType_t timeDiff = now - dataMsg[i].timestamp;
-        if (timeDiff > pdMS_TO_TICKS(maxDiff))
-        {
-            dataMsg[i].timeStatus = STATUS_TIMEOUT;
-        }
-    }
-}
-#endif
-
 void vTestAssertFailed(const char *file, int line)
 {
     printf("ASSERT : %s:%d\n", file, line);
