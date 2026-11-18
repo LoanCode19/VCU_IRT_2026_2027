@@ -98,6 +98,33 @@ static void TestCanTx_Encoding(void)
              (unsigned)on.data[0], (unsigned)off.data[0]);
 }
 
+// CT9 (T20) : TaskMain envoie le Drive enable a chaque periode ; TaskCanTx le transmet a l'onduleur (0x184). TX-c
+// verifie l'encodage seul : jusqu'ici, seul l'emulateur (E-S3d) voyait ce chemin. A 1 puis a 0 : une valeur figee
+// garderait l'onduleur actif apres la sortie du R2D.
+static int DriveEnableSent(int32_t value)
+{
+    dataMessage_t msg = {.id = driveEnableCmdId, .data = value, .timestamp = 100U};
+    (void)xQueueSend(xCanTxQueue, &msg, 0);
+    RunTaskOnce(TaskCanTx, &sCanTxParams);
+    CanFrame_t frame = {0};
+    if (!xTestCanLastTx(CAN_ID_DTI_DRIVE_ENABLE, &frame) || (frame.dlc != 1U))
+    {
+        return -1;
+    }
+    return (int)frame.data[0];
+}
+
+static void TestCanTx_DriveEnable(void)
+{
+    Setup();
+    int on = DriveEnableSent(1);
+    int off = DriveEnableSent(0);
+    vt_check("CT9a", "-", (on == 1) && (off == 0),
+             "Drive enable a 1 puis a 0 dans la queue de CanTx -> trames 0x%03lX, octet %d puis %d (attendu 1 puis 0 ; "
+             "-1 : pas de trame)",
+             (unsigned long)CAN_ID_DTI_DRIVE_ENABLE, on, off);
+}
+
 // Un message que TaskCanTx ne connait pas ne part jamais vers l'onduleur
 static void TestCanTx_UnknownMessage(void)
 {
@@ -131,6 +158,7 @@ int main(void)
     TestCanTx_TorqueFrame();
     TestCanTx_SendFailure();
     TestCanTx_UnknownMessage();
+    TestCanTx_DriveEnable();
 
     return vt_end();
 }
