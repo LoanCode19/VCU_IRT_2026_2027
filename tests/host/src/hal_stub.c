@@ -32,6 +32,8 @@ static unsigned sStartCount = 0U;
 static uint32_t sNotifications = 0U;
 static unsigned sErrorHandlerCount = 0U;
 static unsigned sIwdgRefreshCount = 0U;
+static char sItm[16]; // premiers caracteres envoyes a l'ITM
+static unsigned sItmCount = 0U;
 
 void vHalStubReset(void)
 {
@@ -47,6 +49,7 @@ void vHalStubReset(void)
     sNotifications = 0U;
     sErrorHandlerCount = 0U;
     sIwdgRefreshCount = 0U;
+    sItmCount = 0U;
 }
 
 bool xHalStubPushRx(const CAN_RxHeaderTypeDef *header, const uint8_t data[8])
@@ -111,6 +114,14 @@ unsigned uxHalStubErrorHandlerCount(void)
 unsigned uxHalStubIwdgRefreshCount(void)
 {
     return sIwdgRefreshCount;
+}
+
+unsigned uxHalStubItm(char *out, unsigned size)
+{
+    unsigned n = (sItmCount < (unsigned)sizeof(sItm)) ? sItmCount : (unsigned)sizeof(sItm);
+    n = (n < size) ? n : size;
+    memcpy(out, sItm, n);
+    return sItmCount;
 }
 
 // ----------------------------------------------------------------------------------------------
@@ -190,6 +201,11 @@ HAL_StatusTypeDef HAL_IWDG_Refresh(IWDG_HandleTypeDef *hiwdg)
 
 uint32_t ITM_SendChar(uint32_t ch)
 {
+    if (sItmCount < (unsigned)sizeof(sItm))
+    {
+        sItm[sItmCount] = (char)ch;
+    }
+    sItmCount++;
     return ch;
 }
 

@@ -297,6 +297,24 @@ static void TestCarte_SelfTestFrames(void)
              nTrvp, sensors ? "bons" : "faux", nMain, inverter ? "bons" : "faux", rejected);
 }
 
+// CT4 : refreshIWDG() recharge l'IWDG une fois ; _write() (printf vers la console SWV) envoie chaque caractere a
+// l'ITM, dans l'ordre, et rend le nombre de caracteres ecrits
+static void TestCarte_IwdgAndConsole(void)
+{
+    Setup();
+    refreshIWDG();
+    unsigned refreshes = uxHalStubIwdgRefreshCount();
+    vt_check("CT4e", "-", refreshes == 1U, "refreshIWDG() -> HAL_IWDG_Refresh x%u (attendu 1)", refreshes);
+
+    char text[] = "ab";
+    int written = BoardWrite(1, text, 2);
+    char itm[4] = {0};
+    unsigned sent = uxHalStubItm(itm, sizeof(itm));
+    vt_check("CT4f", "-", (written == 2) && (sent == 2U) && (itm[0] == 'a') && (itm[1] == 'b'),
+             "_write() de 2 caracteres (ab) -> rend %d, %u caractere(s) vers l'ITM : %c%c (attendu 2, 2, ab)", written,
+             sent, (itm[0] != 0) ? itm[0] : '?', (itm[1] != 0) ? itm[1] : '?');
+}
+
 int main(void)
 {
     vt_begin("Code CAN de la carte (fausse HAL)");
@@ -308,6 +326,7 @@ int main(void)
     TestCarte_TorqueFrameToHal();
     TestCarte_TxRefusedAndExtended();
     TestCarte_SelfTestFrames();
+    TestCarte_IwdgAndConsole();
 
     return vt_end();
 }

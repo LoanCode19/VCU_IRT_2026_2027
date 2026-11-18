@@ -128,6 +128,54 @@ static void TestDigital_Outputs(void)
              pump ? "ON" : "OFF", light ? "ON" : "OFF");
 }
 
+// CT4 : un ordre de sortie hors du tableau (OUTPUT_COUNT, au-dela, ou negatif) ne change aucune sortie. Comme pour
+// wdgFeed(), une ecriture juste a cote du tableau ne se voit pas a coup sur : on verifie qu'aucune sortie valide ne bouge.
+static void TestDigital_OrderOutOfRange(void)
+{
+    BootMainApp();
+    sDigitalParams = (DigitalSignalsParams_t){&xDSQueue, TaskDigitalSignalsId};
+    for (unsigned i = 0; i < (unsigned)OUTPUT_COUNT; i++)
+    {
+        digitalOutputs[i] = false;
+    }
+    const DigitalOrder_t orders[] = {{(Order_t)OUTPUT_COUNT, true}, {(Order_t)(OUTPUT_COUNT + 1), true}, {(Order_t)-1, true}};
+    for (unsigned i = 0; i < sizeof(orders) / sizeof(orders[0]); i++)
+    {
+        (void)xQueueSend(xDSQueue, &orders[i], 0);
+    }
+    RunTaskOnce(TaskDigitalSignals, &sDigitalParams);
+    unsigned on = 0U;
+    for (unsigned i = 0; i < (unsigned)OUTPUT_COUNT; i++)
+    {
+        on += digitalOutputs[i] ? 1U : 0U;
+    }
+    unsigned left = (unsigned)uxTestQueueCount(xDSQueue);
+    vt_check("CT4b", "-", (on == 0U) && (left == 0U),
+             "ordres ON pour les sorties %d, %d et -1 (hors du tableau) -> %u sortie(s) allumee(s), %u ordre(s) restes "
+             "dans la queue (attendu 0 et 0 : ordres lus et ignores)",
+             (int)OUTPUT_COUNT, (int)OUTPUT_COUNT + 1, on, left);
+}
+
+// CT4 : sans queue des sorties (le parametre pointe vers une queue nulle), le refroidissement n'envoie rien vers une
+// queue nulle : la vraie FreeRTOS s'y arreterait (configASSERT).
+static void TestCooling_NoOutputQueue(void)
+{
+    BootMainApp();
+    static QueueHandle_t noOutputs = NULL;
+    sCoolingParams = (CoolingParams_t){&xCoolingQueue, TaskCoolingId, &noOutputs};
+    vTestSetTickAutoIncrement(false);
+    vTestSetTickCount(COOLING_T0);
+    unsigned before = uxTestNullQueueSends();
+    dataMessage_t msg = {.id = motor_tempId, .data = 60, .timestamp = COOLING_T0};
+    (void)xQueueSend(xCoolingQueue, &msg, 0);
+    RunTaskOnce(TaskCoolingSystem, &sCoolingParams);
+    unsigned nullSends = uxTestNullQueueSends() - before;
+    vt_check("CT4h", "-", nullSends == 0U,
+             "refroidissement sans queue des sorties (pointeur vers une queue nulle), moteur a 60 degres -> %u envoi(s) "
+             "vers une queue nulle (attendu 0)",
+             nullSends);
+}
+
 // Q9 (T28) : les ordres partent dans la queue recue en parametre. La globale xDSQueue est une autre queue : elle ne
 // doit rien recevoir.
 static void TestCooling_QueueFromParameters(void)
@@ -216,6 +264,8 @@ int main(void)
     TestCooling_TsOffAndUnknown();
     TestCooling_QueueFromParameters();
     TestDigital_Outputs();
+    TestDigital_OrderOutOfRange();
+    TestCooling_NoOutputQueue();
 
     return vt_end();
 }

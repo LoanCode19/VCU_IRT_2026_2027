@@ -138,6 +138,25 @@ static void TestWatchdog_Registration(void)
     vt_check("W3b", "-", guarded.after == 0xA5A5A5A5u,
              "wdgRegister() avec le numero de tache %d (hors du tableau) -> case suivante %s (attendu intacte)",
              MAX_TASKS, (guarded.after == 0xA5A5A5A5u) ? "intacte" : "ecrasee");
+
+    // CT4 : wdgFeed() avec un numero hors du tableau ne touche aucune case. La table est globale : une ecriture juste
+    // a cote ne se voit pas a coup sur sans outil de memoire ; on verifie qu'aucune case valide ne change (un numero
+    // ramene dans le tableau ecraserait le signe de vie d'une autre tache).
+    for (int i = 0; i < MAX_TASKS; i++)
+    {
+        wdgLastFeed[i] = (TickType_t)(1000U + (unsigned)i);
+    }
+    wdgFeed((TaskId)MAX_TASKS, 77U);
+    wdgFeed((TaskId)(MAX_TASKS + 1), 77U);
+    wdgFeed((TaskId)-1, 77U);
+    unsigned changed = 0U;
+    for (int i = 0; i < MAX_TASKS; i++)
+    {
+        changed += (wdgLastFeed[i] != (TickType_t)(1000U + (unsigned)i)) ? 1U : 0U;
+    }
+    vt_check("CT4a", "-", changed == 0U,
+             "wdgFeed() avec les numeros %d, %d et -1 (hors du tableau) -> %u case(s) valide(s) changee(s) (attendu 0)",
+             MAX_TASKS, MAX_TASKS + 1, changed);
 }
 
 static void TestWatchdog_RefreshWhenHealthy(void)

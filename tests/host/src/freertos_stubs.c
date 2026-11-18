@@ -35,6 +35,7 @@ static TestWakeHook_t sWakeHook = NULL;
 // Envois refuses parce que la queue etait pleine, et la plus longue attente demandee pour l'un d'eux (T24c)
 static unsigned sFullSends = 0U;
 static TickType_t sMaxWaitOnFullSend = 0U;
+static unsigned sNullQueueSends = 0U;
 
 static TestCreatedTask_t sCreatedTasks[TEST_MAX_CREATED_TASKS];
 static unsigned sCreatedTaskCount = 0U;
@@ -96,6 +97,10 @@ BaseType_t xQueueSend(QueueHandle_t queueHandle, const void *item, TickType_t ti
         // Queue pleine : la vraie bloquerait jusqu'a ticksToWait. Ici, simple echec, mais l'attente demandee est notee.
         sFullSends++;
         sMaxWaitOnFullSend = (ticksToWait > sMaxWaitOnFullSend) ? ticksToWait : sMaxWaitOnFullSend;
+    }
+    if (queue == NULL)
+    {
+        sNullQueueSends++;
     }
     if ((queue == NULL) || (item == NULL) || (queue->count >= queue->queueLength))
     {
@@ -337,6 +342,11 @@ const TestCreatedTask_t *pxTestCreatedTask(unsigned index)
 void vTestSetStackTop(const void *stackTop)
 {
     sStackTop = (uintptr_t)stackTop;
+}
+
+unsigned uxTestNullQueueSends(void)
+{
+    return sNullQueueSends;
 }
 
 // Copie de src/utils.c pour le test du refroidissement, qui n'embarque pas utils.c.

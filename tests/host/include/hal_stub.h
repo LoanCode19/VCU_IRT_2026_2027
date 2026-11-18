@@ -113,5 +113,6 @@ unsigned uxHalStubStartCount(void);     // appels a HAL_CAN_Start
 uint32_t ulHalStubNotifications(void);  // notifications activees (HAL_CAN_ActivateNotification)
 unsigned uxHalStubErrorHandlerCount(void);
 unsigned uxHalStubIwdgRefreshCount(void);
+unsigned uxHalStubItm(char *out, unsigned size); // caracteres envoyes a l'ITM (console SWV) depuis vHalStubReset()
 
 #endif // TEST_HOST_HAL_STUB_H

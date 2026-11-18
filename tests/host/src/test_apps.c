@@ -180,6 +180,19 @@ static void TestApps_InputNotModified(void)
     vt_check("S4d", "-", (flat == 0.0f) && (badIndex == 0.0f),
              "course nulle (potmin = potmax) -> %.1f %% ; capteur n. 2 (inexistant) -> %.1f %% (attendu 0 et 0)", flat,
              badIndex);
+
+    // CT4 : numero de capteur negatif -> 0 %, sans lire hors des tableaux de calibration
+    float negativeIndex = NormalizeThrottle(2000, -1);
+    vt_check("CT4c", "-", negativeIndex == 0.0f, "capteur n. -1 (inexistant) -> %.1f %% (attendu 0)", negativeIndex);
+
+    // CT4 : un pointeur nul a la place d'un APPS -> 0 %, sans le lire
+    dataMessage_t valid1 = Apps(0, 40.0f, STATUS_TIME_OK);
+    dataMessage_t valid2 = Apps(1, 40.0f, STATUS_TIME_OK);
+    float noApps1 = GetUserThrottleCommand(NULL, &valid2, 0, false);
+    float noApps2 = GetUserThrottleCommand(&valid1, NULL, 0, false);
+    vt_check("CT4d", "-", (noApps1 == 0.0f) && (noApps2 == 0.0f),
+             "APPS1 nul, APPS2 a 40 %% -> %.1f %% ; APPS1 a 40 %%, APPS2 nul -> %.1f %% (attendu 0 et 0)", noApps1,
+             noApps2);
 }
 
 // Fenetre de plage : la course, elargie d'une marge de chaque cote. Dans la marge, la valeur est bornee a la course.
