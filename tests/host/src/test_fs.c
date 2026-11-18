@@ -272,10 +272,22 @@ static void Test_T6(void)
     {
         (void)CalcThrottle(0.0f, 1500, false);
     }
-    float torque = CalcThrottle(0.0f, 1500, true);
-    vt_check("FS-14", "T 6.1.13", torque <= 0.0f,
-             "pedale de frein appuyee en roulant -> couple moteur %+.1f %% (attendu <= 0 : recuperation = couple negatif)",
-             torque);
+    // Pedale appuyee : sans la coupure au freinage (S2), le couple suivrait la pedale. Avec la pedale a 0 %, la zone
+    // morte donnait deja 0 et le test ne pouvait pas echouer (CT2). La recuperation de T 6.1.13 est sans objet (D3).
+    float released = CalcThrottle(40.0f, 1500, false);
+    float torque = CalcThrottle(40.0f, 1500, true);
+    if (released <= 0.0f)
+    {
+        vt_blocked("FS-14", "T 6.1.13", "pedale a 40 %% sans frein -> couple %+.1f %% : coupure au freinage non "
+                   "verifiable", released);
+    }
+    else
+    {
+        vt_check("FS-14", "T 6.1.13", torque <= 0.0f,
+                 "frein appuye en roulant, pedale a 40 %% -> couple moteur %+.1f %% (attendu <= 0 ; sans frein : %.1f %%. "
+                 "S2 ; pas de recuperation, D3)",
+                 torque, released);
+    }
 }
 
 // ----------------------------------------------------------------------------------------------
